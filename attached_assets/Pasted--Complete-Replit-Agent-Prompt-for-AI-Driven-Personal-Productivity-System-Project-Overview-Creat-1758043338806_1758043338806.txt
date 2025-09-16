@@ -1,0 +1,304 @@
+# Complete Replit Agent Prompt for AI-Driven Personal Productivity System
+
+## Project Overview
+Create a comprehensive AI-driven personal productivity system that captures tasks from various inputs, intelligently organizes them into a strategic planning matrix, and automatically schedules them into daily time-blocked worksheets. This system will use AI to extract, categorize, prioritize, and optimize task management for individual users.
+
+## Technology Stack Requirements
+- **Backend**: Node.js with Express
+- **Database**: PostgreSQL with the following schema:
+  - tasks table (id, name, type, category, subcategory, time_horizon, status, priority, estimated_time, actual_time, why, description, assignee, due_date, created_at, updated_at)
+  - task_dependencies table (task_id, depends_on_task_id)
+  - task_hierarchy table (parent_task_id, child_task_id, hierarchy_level)
+  - recurring_tasks table (id, task_name, time_block, days_of_week, category, duration_minutes)
+  - daily_schedules table (id, date, time_block, quartile, planned_task_id, actual_task_id, status, energy_impact, reflection)
+  - user_settings table (id, work_hours, energy_patterns, category_goals)
+- **Frontend**: React with Tailwind CSS
+- **AI Integration**: OpenAI API (GPT-4) for task extraction and intelligent scheduling
+- **Real-time**: WebSockets for live updates
+- **Authentication**: JWT-based auth with secure session management
+
+## Core Features to Implement
+
+### 1. Task Capture Interface (/capture)
+Create a split-screen interface with:
+
+**Left Panel - AI Chat Interface:**
+- Chat window for conversational task input
+- User can type or paste content (emails, meeting notes, project descriptions)
+- AI responds with extracted tasks and clarifications
+- Support for multiple file uploads: PDF, TXT, DOC, JPG, PNG
+- Drag-and-drop file upload area
+
+**Right Panel - Task Preview Table:**
+- Editable table showing AI-extracted tasks with columns:
+  - Task Name (text input)
+  - Task Type (dropdown: Milestone, Sub-Milestone, Task, Subtask)
+  - Category (dropdown: Personal or Business)
+  - Subcategory (dropdown based on Category selection)
+    - Personal: Physical, Mental, Relationship, Environmental, Financial, Adventure
+    - Business: Marketing, Sales, Operations, Products, Production
+  - Time Horizon (dropdown: 10 Year, 5 Year, 1 Year, Quarter, Week, Today)
+  - Priority (dropdown: High, Medium, Low)
+  - Estimated Time (number input with hours)
+  - Due Date (date picker)
+  - Dependencies (multi-select from other tasks)
+  - Why (text field for rationale)
+  - Description (expandable text area)
+  - Assignee (text input, default to "self")
+- Ability to edit any cell before submission
+- Add/delete rows manually
+- Checkbox to include/exclude each task
+- "Submit All Tasks" button to save approved tasks to database
+
+**AI Extraction Prompt Template:**
+```javascript
+const extractionPrompt = `
+Analyze this content and extract actionable tasks. For each task, determine:
+1. Task Name: Clear, actionable statement
+2. Task Type: 
+   - Milestone: Long-term outcome (months/years)
+   - Sub-Milestone: Major phase within milestone
+   - Task: Concrete action (days/weeks)
+   - Subtask: Smallest unit (hours)
+3. Category and Subcategory
+4. Time Horizon based on complexity and urgency
+5. Priority (High/Medium/Low)
+6. Estimated time in hours
+7. Dependencies on other tasks
+8. Why this matters (extract from context)
+9. Due date if mentioned
+
+Return as structured JSON array.
+`;
+```
+
+### 2. Strategic Planning Matrix (/planning)
+Create a comprehensive grid view:
+
+**Grid Structure:**
+- **Rows** (in order):
+  - VISION
+  - 10 YEAR
+  - 5 YEAR  
+  - 1 YEAR
+  - Q2, Q3, Q4 (current year quarters)
+  - Current Month
+  - Week 5, Week 4, Week 3, Current Week
+  - Today (with time blocks)
+  - BACKLOG
+
+- **Columns** (11 total):
+  - Personal: Physical, Mental, Relationship, Environmental, Financial, Adventure
+  - Business: Marketing, Sales, Operations, Products, Production
+
+**Features:**
+- Each cell can contain multiple tasks/milestones
+- Drag and drop between cells
+- Color coding: Personal (blue shades), Business (green shades)
+- Click any cell to view/add/edit tasks
+- Visual dependency lines between related tasks
+- Progress indicators on each task (0-100%)
+- Automatic rollup of subtask progress to parent tasks
+
+**Right Side Panel:**
+- AI Chat for reorganization commands
+- Filter options (show only incomplete, specific category, etc.)
+- Statistics dashboard (tasks per category, completion rates)
+
+### 3. Daily Worksheet Interface (/daily)
+Create a time-blocked daily schedule:
+
+**Time Block Structure:**
+```javascript
+const timeBlocks = [
+  { name: "Recover", time: "12am-7am", quartiles: 4 },
+  { name: "PHYSICAL MENTAL", time: "7-9AM", quartiles: 4 },
+  { name: "CHIEF PROJECT", time: "9-11AM", quartiles: 4 },
+  { name: "HOUR OF POWER", time: "11-12PM", quartiles: 4 },
+  { name: "PRODUCTION WORK", time: "12-2PM", quartiles: 4 },
+  { name: "COMPANY BLOCK", time: "2-4PM", quartiles: 4 },
+  { name: "BUSINESS AUTOMATION", time: "4-6PM", quartiles: 4 },
+  { name: "ENVIRONMENTAL", time: "6-8PM", quartiles: 4 },
+  { name: "FLEXIBLE BLOCK", time: "8-10PM", quartiles: 4 },
+  { name: "WIND DOWN", time: "10PM-12AM", quartiles: 4 }
+];
+```
+
+**For Each Time Block:**
+- 4 quartiles (Q1-Q4) with fields:
+  - Planned Task (auto-populated by AI)
+  - Current Task (editable dropdown)
+  - Task 1 (parallel task tracking)
+  - Status (Planned, In Progress, Completed)
+
+**Top Control Panel:**
+- Date selector
+- Total Time counter (live)
+- Current Time counter (live)
+- Break timer (tracks at 4:30:00)
+- Energy meter with +/- values
+- One-click timer start/stop for current task
+
+**Right Side Panel:**
+- Chat Window for AI assistance
+- Reflection note field per block
+- Energy tracking inputs (Exercise: -500, Break: +200, etc.)
+- Quick capture: Upload image or "How can I help?" prompt
+
+**Top Dashboard Section:**
+- Real-time graphs:
+  - Energy level throughout day
+  - Planned vs Actual time per block
+  - Task completion rate
+  - Category balance pie chart
+
+### 4. AI Intelligence Engine
+
+**Daily Schedule Generation Algorithm:**
+```javascript
+async function generateDailySchedule(date) {
+  // 1. Get all tasks for user
+  const tasks = await getTasks({ 
+    status: ['not_started', 'in_progress'],
+    dueDate: { lte: addDays(date, 7) }
+  });
+
+  // 2. Get recurring tasks
+  const recurringTasks = await getRecurringTasks(date);
+
+  // 3. Get user's energy patterns
+  const energyPattern = await getUserEnergyPattern();
+
+  // 4. Smart scheduling logic
+  const schedule = {};
+  
+  // Fill recurring tasks first
+  recurringTasks.forEach(task => {
+    assignToBlock(schedule, task.timeBlock, task);
+  });
+
+  // Fill high-priority tasks in optimal energy slots
+  tasks
+    .sort((a, b) => b.priority - a.priority)
+    .forEach(task => {
+      const optimalBlock = findOptimalBlock(
+        task.category, 
+        task.estimatedTime,
+        energyPattern,
+        schedule
+      );
+      assignToBlock(schedule, optimalBlock, task);
+    });
+
+  return schedule;
+}
+```
+
+**AI Chat Commands to Support:**
+- "Move all Marketing tasks to next week"
+- "I'm tired, reschedule high-energy tasks"
+- "Show me what's blocking [milestone name]"
+- "Optimize my schedule for deep work"
+- "Balance my Personal and Business tasks"
+- "Generate weekly review report"
+- "What should I focus on next?"
+
+### 5. Database and API Endpoints
+
+**Essential API Routes:**
+```javascript
+// Task Management
+POST   /api/tasks/capture    // AI extraction from content
+POST   /api/tasks            // Create tasks
+PUT    /api/tasks/:id        // Update task
+DELETE /api/tasks/:id        // Delete task
+GET    /api/tasks            // Get all tasks with filters
+
+// Planning
+GET    /api/planning/matrix  // Get tasks organized by horizon/category
+POST   /api/planning/move    // Move task to different cell
+POST   /api/planning/ai-optimize // AI reorganization
+
+// Daily Schedule  
+GET    /api/daily/:date      // Get schedule for specific date
+POST   /api/daily/generate   // AI generate schedule
+PUT    /api/daily/update     // Update task status/time
+POST   /api/daily/reflection // Save reflection
+
+// AI Integration
+POST   /api/ai/extract       // Extract tasks from text/files
+POST   /api/ai/prioritize    // AI prioritization
+POST   /api/ai/chat          // General AI assistance
+```
+
+### 6. Additional Features
+
+**Keyboard Shortcuts:**
+- `Cmd+Enter`: Submit current form
+- `Space`: Start/stop timer
+- `1-4`: Mark current task complete and move to next
+- `Tab`: Navigate between quartiles
+- `Cmd+/`: Open AI chat
+
+**Auto-save:** Every 30 seconds for all changes
+
+**Responsive Design:** Mobile-friendly for on-the-go updates
+
+**Data Export:** CSV export for all tasks and time tracking
+
+**Integrations Ready:**
+- Google Calendar API hookup points
+- Slack notification endpoints
+- Email task capture endpoint
+
+## UI/UX Requirements
+
+**Design System:**
+- Clean, minimal interface with clear visual hierarchy
+- Personal categories: Blue color palette (#3B82F6 base)
+- Business categories: Green color palette (#10B981 base)
+- Completed tasks: Gray out with strikethrough
+- Overdue tasks: Red accent border
+- High priority: Yellow star indicator
+- Smooth animations for drag-and-drop
+- Loading states for all AI operations
+- Toast notifications for actions
+
+**Navigation:**
+- Top navbar with three main sections: Capture | Planning | Daily
+- User profile dropdown with settings
+- Quick-add task button available globally
+- Breadcrumb navigation for deep views
+
+## Performance Requirements
+- Page load under 2 seconds
+- AI task extraction under 5 seconds
+- Real-time updates without page refresh
+- Support 10,000+ tasks without performance degradation
+- Optimistic UI updates with rollback on error
+
+## Security Requirements
+- Secure API key storage for OpenAI
+- User data encryption at rest
+- Rate limiting on AI endpoints
+- Input sanitization for all user inputs
+- CORS properly configured
+
+## Initial Data Seed
+Create sample data showing:
+- 5 Milestones across different categories
+- 20 Tasks distributed across time horizons
+- 10 Recurring tasks for daily blocks
+- Example dependencies between tasks
+
+## Success Criteria
+The system should allow a user to:
+1. Upload a document and see extracted tasks within 10 seconds
+2. Drag tasks between planning cells smoothly
+3. Generate a daily schedule that respects energy patterns
+4. Track time on tasks with one click
+5. Get AI assistance through natural language commands
+6. See their progress toward long-term goals
+7. Maintain work-life balance through category distribution
+
+Build this as a fully functional MVP with all core features working end-to-end. Focus on making the AI integration robust and the user interface intuitive. The system should feel intelligent but not overwhelming, helping users focus on what matters most each day while maintaining alignment with long-term vision.
