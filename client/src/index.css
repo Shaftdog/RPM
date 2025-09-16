@@ -1,0 +1,311 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(224, 71%, 4%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(224, 71%, 4%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(224, 71%, 4%);
+  --primary: hsl(221, 83%, 53%);
+  --primary-foreground: hsl(210, 40%, 98%);
+  --secondary: hsl(220, 14%, 96%);
+  --secondary-foreground: hsl(220, 9%, 46%);
+  --muted: hsl(220, 14%, 96%);
+  --muted-foreground: hsl(220, 9%, 46%);
+  --accent: hsl(220, 14%, 96%);
+  --accent-foreground: hsl(220, 9%, 46%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(210, 40%, 98%);
+  --border: hsl(220, 13%, 91%);
+  --input: hsl(220, 13%, 91%);
+  --ring: hsl(221, 83%, 53%);
+  --chart-1: hsl(221, 83%, 53%);
+  --chart-2: hsl(142, 71%, 45%);
+  --chart-3: hsl(42, 93%, 56%);
+  --chart-4: hsl(147, 79%, 42%);
+  --chart-5: hsl(341, 75%, 51%);
+  --sidebar: hsl(220, 14%, 96%);
+  --sidebar-foreground: hsl(224, 71%, 4%);
+  --sidebar-primary: hsl(221, 83%, 53%);
+  --sidebar-primary-foreground: hsl(210, 40%, 98%);
+  --sidebar-accent: hsl(220, 14%, 96%);
+  --sidebar-accent-foreground: hsl(220, 9%, 46%);
+  --sidebar-border: hsl(220, 13%, 91%);
+  --sidebar-ring: hsl(221, 83%, 53%);
+  --personal: hsl(221, 83%, 53%);
+  --personal-foreground: hsl(210, 40%, 98%);
+  --business: hsl(142, 71%, 45%);
+  --business-foreground: hsl(210, 40%, 98%);
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: 'Fira Code', Menlo, monospace;
+  --radius: 0.5rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(221, 83%, 53%, 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(221, 83%, 53%, 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(221, 83%, 53%, 0.00), 0px 1px 2px -1px hsl(221, 83%, 53%, 0.00);
+  --shadow: 0px 2px 0px 0px hsl(221, 83%, 53%, 0.00), 0px 1px 2px -1px hsl(221, 83%, 53%, 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(221, 83%, 53%, 0.00), 0px 2px 4px -1px hsl(221, 83%, 53%, 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(221, 83%, 53%, 0.00), 0px 4px 6px -1px hsl(221, 83%, 53%, 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(221, 83%, 53%, 0.00), 0px 8px 10px -1px hsl(221, 83%, 53%, 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(221, 83%, 53%, 0.00);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: hsl(224, 71%, 4%);
+  --foreground: hsl(210, 40%, 98%);
+  --card: hsl(224, 71%, 4%);
+  --card-foreground: hsl(210, 40%, 98%);
+  --popover: hsl(224, 71%, 4%);
+  --popover-foreground: hsl(210, 40%, 98%);
+  --primary: hsl(221, 83%, 53%);
+  --primary-foreground: hsl(210, 40%, 98%);
+  --secondary: hsl(215, 25%, 27%);
+  --secondary-foreground: hsl(210, 40%, 98%);
+  --muted: hsl(215, 25%, 27%);
+  --muted-foreground: hsl(217, 10%, 64%);
+  --accent: hsl(215, 25%, 27%);
+  --accent-foreground: hsl(210, 40%, 98%);
+  --destructive: hsl(0, 62%, 30%);
+  --destructive-foreground: hsl(210, 40%, 98%);
+  --border: hsl(215, 27%, 32%);
+  --input: hsl(215, 27%, 32%);
+  --ring: hsl(221, 83%, 53%);
+  --chart-1: hsl(221, 83%, 53%);
+  --chart-2: hsl(142, 71%, 45%);
+  --chart-3: hsl(42, 93%, 56%);
+  --chart-4: hsl(147, 79%, 42%);
+  --chart-5: hsl(341, 75%, 51%);
+  --sidebar: hsl(215, 25%, 27%);
+  --sidebar-foreground: hsl(210, 40%, 98%);
+  --sidebar-primary: hsl(221, 83%, 53%);
+  --sidebar-primary-foreground: hsl(210, 40%, 98%);
+  --sidebar-accent: hsl(215, 25%, 27%);
+  --sidebar-accent-foreground: hsl(210, 40%, 98%);
+  --sidebar-border: hsl(215, 27%, 32%);
+  --sidebar-ring: hsl(221, 83%, 53%);
+  --personal: hsl(221, 83%, 53%);
+  --personal-foreground: hsl(210, 40%, 98%);
+  --business: hsl(142, 71%, 45%);
+  --business-foreground: hsl(210, 40%, 98%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+
+  /* Custom utility classes for productivity system */
+  .task-personal {
+    @apply bg-personal/20 border-l-4 border-personal text-personal;
+  }
+  
+  .task-business {
+    @apply bg-business/20 border-l-4 border-business text-business;
+  }
+  
+  .task-backlog {
+    @apply bg-muted border-l-4 border-muted-foreground text-muted-foreground;
+  }
+
+  /* Matrix cell backgrounds */
+  .matrix-cell-personal {
+    @apply bg-personal/5;
+  }
+  
+  .matrix-cell-business {
+    @apply bg-business/5;
+  }
+  
+  .matrix-cell-today-personal {
+    @apply bg-personal/10;
+  }
+  
+  .matrix-cell-today-business {
+    @apply bg-business/10;
+  }
+  
+  .matrix-cell-backlog {
+    @apply bg-muted/20;
+  }
+
+  /* Priority badges */
+  .priority-high {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+  
+  .priority-medium {
+    @apply bg-orange-100 text-orange-800;
+  }
+  
+  .priority-low {
+    @apply bg-gray-100 text-gray-800;
+  }
+
+  /* Status badges */
+  .status-completed {
+    @apply bg-business text-business-foreground;
+  }
+  
+  .status-in-progress {
+    @apply bg-primary text-primary-foreground;
+  }
+  
+  .status-planned {
+    @apply bg-secondary text-secondary-foreground;
+  }
+
+  /* Animation utilities */
+  .drag-over {
+    @apply bg-primary/10 ring-2 ring-primary/20;
+  }
+  
+  .task-dragging {
+    @apply opacity-50 transform rotate-2;
+  }
+
+  /* Time block highlighting */
+  .time-block-active {
+    @apply border-2 border-primary bg-primary/5;
+  }
+  
+  .quartile-active {
+    @apply border-2 border-primary;
+  }
+
+  /* Energy level indicators */
+  .energy-positive {
+    @apply text-business;
+  }
+  
+  .energy-negative {
+    @apply text-destructive;
+  }
+
+  /* Custom scrollbars for chat and matrix */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-muted/30 rounded-full;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full hover:bg-muted-foreground/50;
+  }
+
+  /* File upload area styling */
+  .upload-area-hover {
+    @apply border-primary bg-primary/5;
+  }
+
+  /* Timer display styling */
+  .timer-display {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+  }
+
+  /* Matrix row highlighting */
+  .matrix-row-today {
+    @apply bg-yellow-50;
+  }
+  
+  .matrix-row-vision {
+    background: linear-gradient(to right, hsl(var(--primary) / 0.05), hsl(var(--business) / 0.05));
+  }
+}
+
+/* Dark mode adjustments */
+.dark .priority-high {
+  @apply bg-yellow-900 text-yellow-200;
+}
+
+.dark .priority-medium {
+  @apply bg-orange-900 text-orange-200;
+}
+
+.dark .priority-low {
+  @apply bg-gray-800 text-gray-300;
+}
+
+.dark .matrix-row-today {
+  @apply bg-yellow-900/20;
+}
+
+.dark .matrix-row-vision {
+  background: linear-gradient(to right, hsl(var(--primary) / 0.1), hsl(var(--business) / 0.1));
+}
+
+/* Responsive design adjustments */
+@media (max-width: 1024px) {
+  .matrix-grid {
+    min-width: 800px;
+  }
+}
+
+@media (max-width: 768px) {
+  .time-block-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .matrix-grid {
+    font-size: 0.875rem;
+  }
+}
+
+/* Animation keyframes */
+@keyframes taskPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.task-pulse {
+  animation: taskPulse 2s infinite;
+}
+
+@keyframes timerBlink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0.3;
+  }
+}
+
+.timer-blink {
+  animation: timerBlink 1s infinite;
+}
+
+/* Focus states for accessibility */
+.focus-visible:focus {
+  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+}
+
+/* Smooth transitions */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.transition-colors {
+  transition-property: color, background-color, border-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
