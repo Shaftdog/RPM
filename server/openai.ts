@@ -22,25 +22,28 @@ export interface ExtractedTask {
 export async function extractTasksFromContent(content: string): Promise<ExtractedTask[]> {
   try {
     const prompt = `
-    Analyze this content and extract actionable tasks. For each task, determine:
-    1. Task Name: Clear, actionable statement
-    2. Task Type: 
+    Analyze this content and extract actionable tasks. For each task, return a JSON object with these exact field names:
+    
+    1. name: Clear, actionable statement (string)
+    2. type: One of: "Milestone", "Sub-Milestone", "Task", "Subtask"
        - Milestone: Long-term outcome (months/years)
        - Sub-Milestone: Major phase within milestone
        - Task: Concrete action (days/weeks)
        - Subtask: Smallest unit (hours)
-    3. Category: Personal or Business
-    4. Subcategory: 
-       - Personal: Physical, Mental, Relationship, Environmental, Financial, Adventure
-       - Business: Marketing, Sales, Operations, Products, Production
-    5. Time Horizon based on complexity and urgency: 10 Year, 5 Year, 1 Year, Quarter, Week, Today
-    6. Priority (High/Medium/Low)
-    7. Estimated time in hours (decimal number)
-    8. Dependencies on other tasks (array of task names)
-    9. Why this matters (extract from context)
-    10. Due date if mentioned (ISO date string)
+    3. category: "Personal" or "Business"
+    4. subcategory: 
+       - For Personal: "Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure"
+       - For Business: "Marketing", "Sales", "Operations", "Products", "Production"
+    5. timeHorizon: One of: "10 Year", "5 Year", "1 Year", "Quarter", "Week", "Today"
+    6. priority: "High", "Medium", or "Low"
+    7. estimatedTime: Number of hours as decimal (e.g., 2.5)
+    8. dependencies: Array of task names (empty array if none)
+    9. why: Explanation of why this task matters
+    10. dueDate: ISO date string if mentioned (optional)
+    11. description: Additional details (optional)
 
     Return as a JSON object with an array of tasks under the key "tasks".
+    Use exactly these field names: name, type, category, subcategory, timeHorizon, priority, estimatedTime, dependencies, why, dueDate, description
     
     Content to analyze:
     ${content}
