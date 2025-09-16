@@ -76,6 +76,7 @@ export class DatabaseStorage implements IStorage {
     this.sessionStore = new PostgresSessionStore({
       conString: process.env.DATABASE_URL,
       createTableIfMissing: false,
+      tableName: 'sessions', // Use plural table name to match our schema
     });
   }
 
