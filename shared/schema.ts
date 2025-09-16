@@ -211,6 +211,12 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
   userId: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  dueDate: z.union([z.date(), z.string().datetime().nullable(), z.null()]).optional().transform((val) => {
+    if (val === null || val === undefined) return null;
+    if (typeof val === 'string') return new Date(val);
+    return val;
+  })
 });
 
 export const insertRecurringTaskSchema = createInsertSchema(recurringTasks).omit({
