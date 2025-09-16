@@ -203,6 +203,138 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper functions for AI schedule normalization
+  function mapStartTimeToCanonicalBlock(startTime: string): string {
+    const timeBlocks = [
+      { name: "Recover", start: "00:00", end: "07:00" },
+      { name: "PHYSICAL MENTAL", start: "07:00", end: "09:00" },
+      { name: "CHIEF PROJECT", start: "09:00", end: "11:00" },
+      { name: "HOUR OF POWER", start: "11:00", end: "12:00" },
+      { name: "PRODUCTION WORK", start: "12:00", end: "14:00" },
+      { name: "COMPANY BLOCK", start: "14:00", end: "16:00" },
+      { name: "BUSINESS AUTOMATION", start: "16:00", end: "18:00" },
+      { name: "ENVIRONMENTAL", start: "18:00", end: "20:00" },
+      { name: "FLEXIBLE BLOCK", start: "20:00", end: "22:00" },
+      { name: "WIND DOWN", start: "22:00", end: "24:00" },
+    ];
+    
+    // Find the time block that contains this start time
+    for (const block of timeBlocks) {
+      if (startTime >= block.start && startTime < block.end) {
+        return block.name;
+      }
+    }
+    return "FLEXIBLE BLOCK"; // Default fallback
+  }
+
+  function mapQuartileLabel(quartileStr: string): number {
+    if (!quartileStr) return 1;
+    const lower = quartileStr.toLowerCase();
+    if (lower.includes('1st') || lower.includes('first')) return 1;
+    if (lower.includes('2nd') || lower.includes('second')) return 2;
+    if (lower.includes('3rd') || lower.includes('third')) return 3;
+    if (lower.includes('4th') || lower.includes('fourth')) return 4;
+    return 1; // Default to first quartile
+  }
+
+  function resolveTaskIdByName(taskName: string, nameToId: Map<string, string>): string | undefined {
+    if (!taskName) return undefined;
+    
+    const cleanName = taskName.toLowerCase().trim();
+    
+    // Exact match first
+    if (nameToId.has(cleanName)) {
+      return nameToId.get(cleanName);
+    }
+    
+    // Partial match - check if any task name contains the search term
+    for (const [name, id] of nameToId.entries()) {
+      if (name.includes(cleanName) || cleanName.includes(name)) {
+        return id;
+      }
+    }
+    
+    return undefined; // No match found
+  }
+
+  function normalizeAIScheduleToEntries(
+    aiSchedule: any, 
+    date: Date, 
+    nameToId: Map<string, string>
+  ): Array<{ date: Date; timeBlock: string; quartile: number; plannedTaskId?: string; status: 'not_started' }> {
+    const entries = [];
+    
+    // Handle array format (local fallback or structured response)
+    if (Array.isArray(aiSchedule.schedule)) {
+      for (const block of aiSchedule.schedule) {
+        let taskList = [];
+        
+        // Extract tasks from different possible structures
+        if (block.tasks && Array.isArray(block.tasks)) {
+          taskList = block.tasks;
+        } else if (block.quartiles && Array.isArray(block.quartiles)) {
+          taskList = block.quartiles.map((q: any) => q.task).filter(Boolean);
+        } else if (block.task && typeof block.task === 'object' && block.task.id) {
+          // New format: single task object per time block
+          taskList = [block.task];
+        }
+        
+        // Create entries for up to 4 tasks per time block
+        for (let i = 0; i < Math.min(taskList.length, 4); i++) {
+          const task = taskList[i];
+          const taskId = task.id || resolveTaskIdByName(task.name, nameToId);
+          
+          if (taskId) {
+            entries.push({
+              date,
+              timeBlock: block.timeBlock,
+              quartile: i + 1,
+              plannedTaskId: taskId,
+              status: 'not_started' as const
+            });
+          }
+        }
+      }
+    } 
+    // Handle flat object format (current OpenAI response)
+    else {
+      for (const [timeRange, val] of Object.entries(aiSchedule)) {
+        if (timeRange === 'source') continue; // Skip metadata
+        
+        // Parse start time from range like "17:00-19:00"
+        const startMatch = timeRange.match(/^(\d{2}:\d{2})/);
+        if (!startMatch) continue;
+        
+        const startTime = startMatch[1];
+        const timeBlock = mapStartTimeToCanonicalBlock(startTime);
+        const quartile = mapQuartileLabel((val as any).quartile);
+        
+        // Handle different task formats in flat object response
+        let taskId: string | undefined;
+        const valAny = val as any;
+        if (valAny.task && valAny.task.id) {
+          // New format: complete task objects with ID
+          taskId = valAny.task.id;
+        } else if (valAny.assignedTask) {
+          // Old format: task names requiring lookup
+          taskId = resolveTaskIdByName(valAny.assignedTask, nameToId);
+        }
+        
+        if (taskId) {
+          entries.push({
+            date,
+            timeBlock,
+            quartile,
+            plannedTaskId: taskId,
+            status: 'not_started' as const
+          });
+        }
+      }
+    }
+    
+    return entries;
+  }
+
   // Daily Schedule Routes
   app.get('/api/daily/:date', isAuthenticated, async (req: any, res) => {
     try {
@@ -247,6 +379,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.time('generate_schedule');
       const aiSchedule = await generateDailySchedule(tasks, recurringTasks, userPreferences);
       console.timeEnd('generate_schedule');
+      
+      // Build task name index for name→ID lookup
+      const nameToId = new Map<string, string>();
+      tasks.forEach(task => {
+        nameToId.set(task.name.toLowerCase().trim(), task.id);
+      });
+      
+      // Normalize AI schedule to database entries
+      const scheduleDate = new Date(date);
+      const scheduleEntries = normalizeAIScheduleToEntries(aiSchedule, scheduleDate, nameToId);
+      
+      // Clear existing schedule for this date and save new entries
+      if (scheduleEntries.length > 0) {
+        console.log(`Saving ${scheduleEntries.length} schedule entries for ${date}`);
+        await storage.clearDailySchedule(userId, scheduleDate);
+        await storage.createDailyScheduleEntries(userId, scheduleEntries);
+      }
       
       res.json(aiSchedule);
     } catch (error) {

@@ -226,6 +226,35 @@ export class DatabaseStorage implements IStorage {
     return updatedEntry;
   }
 
+  async clearDailySchedule(userId: string, date: Date): Promise<void> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    await db.delete(dailySchedules)
+      .where(and(
+        eq(dailySchedules.userId, userId),
+        gte(dailySchedules.date, startOfDay),
+        lte(dailySchedules.date, endOfDay)
+      ));
+  }
+
+  async createDailyScheduleEntries(userId: string, entries: Array<Omit<InsertDailySchedule, 'userId'>>): Promise<DailySchedule[]> {
+    const entriesWithUserId = entries.map(entry => ({
+      ...entry,
+      userId,
+      updatedAt: new Date()
+    }));
+    
+    const newEntries = await db
+      .insert(dailySchedules)
+      .values(entriesWithUserId)
+      .returning();
+    return newEntries;
+  }
+
   // Task dependency operations
   async getTaskDependencies(taskId: string): Promise<TaskDependency[]> {
     return db.select().from(taskDependencies).where(eq(taskDependencies.taskId, taskId));
