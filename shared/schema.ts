@@ -49,7 +49,7 @@ export const subcategoryEnum = pgEnum("subcategory", [
   "Marketing", "Sales", "Operations", "Products", "Production"
 ]);
 export const timeHorizonEnum = pgEnum("time_horizon", [
-  "10 Year", "5 Year", "1 Year", "Quarter", "Week", "Today"
+  "VISION", "10 Year", "5 Year", "1 Year", "Quarter", "Week", "Today", "BACKLOG"
 ]);
 export const priorityEnum = pgEnum("priority", ["High", "Medium", "Low"]);
 export const statusEnum = pgEnum("status", ["not_started", "in_progress", "completed", "blocked"]);

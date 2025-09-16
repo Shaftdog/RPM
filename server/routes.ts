@@ -6,6 +6,7 @@ import { setupAuth, isAuthenticated } from "./auth";
 import { extractTasksFromContent, generateDailySchedule, processAICommand, analyzeImage } from "./openai";
 import { insertTaskSchema, insertRecurringTaskSchema, insertDailyScheduleSchema } from "@shared/schema";
 import multer from "multer";
+import { z } from "zod";
 
 // Configure multer for file uploads
 const upload = multer({ 
@@ -167,11 +168,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/planning/move', isAuthenticated, async (req: any, res) => {
     try {
-      const { taskId, newTimeHorizon, newSubcategory } = req.body;
+      // Validate request body with Zod schema
+      const moveTaskSchema = z.object({
+        taskId: z.string().uuid(),
+        newTimeHorizon: z.enum(["VISION", "10 Year", "5 Year", "1 Year", "Quarter", "Week", "Today", "BACKLOG"]).optional(),
+        newSubcategory: z.enum(["Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure", "Marketing", "Sales", "Operations", "Products", "Production"]).optional(),
+        newCategory: z.enum(["Personal", "Business"]).optional(),
+      });
+
+      const validationResult = moveTaskSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request data", 
+          errors: validationResult.error.issues 
+        });
+      }
+
+      const { taskId, newTimeHorizon, newSubcategory, newCategory } = validationResult.data;
       
       const updates: any = {};
       if (newTimeHorizon) updates.timeHorizon = newTimeHorizon;
       if (newSubcategory) updates.subcategory = newSubcategory;
+      if (newCategory) updates.category = newCategory;
       
       const task = await storage.updateTask(taskId, req.user.id, updates);
       res.json(task);
@@ -180,7 +198,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       broadcastToUser(req.user.id, { type: 'task_moved', data: task });
     } catch (error) {
       console.error("Error moving task:", error);
-      res.status(400).json({ message: "Failed to move task" });
+      const errorMessage = error instanceof Error ? error.message : "Failed to move task";
+      res.status(400).json({ message: errorMessage });
     }
   });
 
@@ -289,20 +308,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
   wss.on('connection', (ws, req) => {
     let userId: string | null = null;
     
+    // Secure WebSocket authentication using session cookie
+    async function authenticateConnection() {
+      try {
+        // Parse cookies from WebSocket request
+        const cookies = req.headers.cookie;
+        if (!cookies) {
+          ws.close(1008, 'Authentication required');
+          return;
+        }
+        
+        // Extract session ID from cookies (connect.sid)
+        const sessionCookie = cookies.split(';')
+          .find(cookie => cookie.trim().startsWith('connect.sid='));
+        
+        if (!sessionCookie) {
+          ws.close(1008, 'Session cookie not found');
+          return;
+        }
+        
+        // Properly decode the session ID (URL-encoded)
+        const encodedSessionId = sessionCookie.split('=')[1];
+        const sessionId = decodeURIComponent(encodedSessionId);
+        
+        // Remove the 's:' prefix and signature from signed cookie
+        const actualSessionId = sessionId.startsWith('s:') 
+          ? sessionId.substring(2).split('.')[0] 
+          : sessionId;
+        
+        // Get session from store
+        const sessionStore = storage.sessionStore;
+        const sessionData = await new Promise<any>((resolve, reject) => {
+          sessionStore.get(actualSessionId, (err, session) => {
+            if (err) reject(err);
+            else resolve(session);
+          });
+        });
+        
+        if (!sessionData || !sessionData.passport?.user) {
+          ws.close(1008, 'Invalid or expired session');
+          return;
+        }
+        
+        // Extract authenticated user ID from session
+        userId = sessionData.passport.user;
+        
+        // Add connection to user's connection set
+        if (!userConnections.has(userId)) {
+          userConnections.set(userId, new Set());
+        }
+        userConnections.get(userId)!.add(ws);
+        
+        ws.send(JSON.stringify({ type: 'auth_success', userId }));
+        
+      } catch (error) {
+        console.error('WebSocket authentication error:', error);
+        ws.close(1008, 'Authentication failed');
+      }
+    }
+    
+    // Authenticate immediately on connection
+    authenticateConnection();
+    
     ws.on('message', (message) => {
       try {
         const data = JSON.parse(message.toString());
         
-        if (data.type === 'auth' && data.userId) {
-          userId = data.userId;
-          
-          if (!userConnections.has(userId)) {
-            userConnections.set(userId, new Set());
-          }
-          userConnections.get(userId)!.add(ws);
-          
-          ws.send(JSON.stringify({ type: 'auth_success' }));
+        // Only accept messages from authenticated connections
+        if (!userId) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated' }));
+          return;
         }
+        
+        // Handle authenticated WebSocket messages here if needed
+        // For now, just echo back for testing
+        ws.send(JSON.stringify({ type: 'message_received', data }));
+        
       } catch (error) {
         console.error('WebSocket message error:', error);
       }
