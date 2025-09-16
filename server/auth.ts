@@ -5,7 +5,9 @@ import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
-import { User as SelectUser } from "@shared/schema";
+import { User as SelectUser, insertUserSchema } from "@shared/schema";
+import { z } from "zod";
+import rateLimit from "express-rate-limit";
 
 declare global {
   namespace Express {
@@ -29,11 +31,26 @@ async function comparePasswords(supplied: string, stored: string) {
 }
 
 export function setupAuth(app: Express) {
+  // Rate limiting for authentication endpoints - prevent brute force attacks
+  const authRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // 5 attempts per window per IP
+    message: { message: "Too many authentication attempts, please try again later" },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
     store: storage.sessionStore,
+    cookie: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+      sameSite: 'lax', // CSRF protection
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
   };
 
   app.set("trust proxy", 1);
@@ -58,31 +75,71 @@ export function setupAuth(app: Express) {
     done(null, user);
   });
 
-  app.post("/api/auth/register", async (req, res, next) => {
-    const existingUser = await storage.getUserByUsername(req.body.username);
-    if (existingUser) {
-      return res.status(400).send("Username already exists");
+  app.post("/api/auth/register", authRateLimit, async (req, res, next) => {
+    try {
+      // Validate input with Zod
+      const validationResult = insertUserSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid input", 
+          errors: validationResult.error.issues 
+        });
+      }
+
+      const validatedData = validationResult.data;
+      const existingUser = await storage.getUserByUsername(validatedData.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      const user = await storage.createUser({
+        ...validatedData,
+        password: await hashPassword(validatedData.password),
+      });
+
+      // Regenerate session before login to prevent fixation attacks
+      req.session.regenerate((sessionErr) => {
+        if (sessionErr) {
+          return res.status(500).json({ message: "Session regeneration failed" });
+        }
+        req.login(user, (err) => {
+          if (err) return next(err);
+          const { password, ...safeUser } = user;
+          res.status(201).json(safeUser);
+        });
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(500).json({ message: "Registration failed" });
     }
-
-    const user = await storage.createUser({
-      ...req.body,
-      password: await hashPassword(req.body.password),
-    });
-
-    req.login(user, (err) => {
-      if (err) return next(err);
-      res.status(201).json(user);
-    });
   });
 
-  app.post("/api/auth/login", passport.authenticate("local"), (req, res) => {
-    res.status(200).json(req.user);
+  app.post("/api/auth/login", authRateLimit, passport.authenticate("local"), (req, res) => {
+    // Regenerate session to prevent session fixation attacks
+    req.session.regenerate((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Session regeneration failed" });
+      }
+      // Re-login after session regeneration
+      req.login(req.user, (loginErr) => {
+        if (loginErr) {
+          return res.status(500).json({ message: "Login failed" });
+        }
+        const { password, ...safeUser } = req.user;
+        res.status(200).json(safeUser);
+      });
+    });
   });
 
   app.post("/api/auth/logout", (req, res, next) => {
     req.logout((err) => {
       if (err) return next(err);
-      res.sendStatus(200);
+      // Destroy session and clear cookie for security
+      req.session.destroy((destroyErr) => {
+        if (destroyErr) return next(destroyErr);
+        res.clearCookie('connect.sid');
+        res.sendStatus(200);
+      });
     });
   });
 

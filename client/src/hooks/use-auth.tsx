@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
-      const res = await apiRequest("POST", "/api/login", credentials);
+      const res = await apiRequest("POST", "/api/auth/login", credentials);
       return await res.json();
     },
     onSuccess: (user: SelectUser) => {
@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registerMutation = useMutation({
     mutationFn: async (credentials: InsertUser) => {
-      const res = await apiRequest("POST", "/api/register", credentials);
+      const res = await apiRequest("POST", "/api/auth/register", credentials);
       return await res.json();
     },
     onSuccess: (user: SelectUser) => {
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/logout");
+      await apiRequest("POST", "/api/auth/logout");
     },
     onSuccess: () => {
       queryClient.setQueryData(["/api/user"], null);
