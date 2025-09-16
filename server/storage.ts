@@ -19,7 +19,7 @@ import {
   type InsertTaskHierarchy,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, gte, lte, sql } from "drizzle-orm";
+import { eq, and, desc, asc, gte, lte, sql, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 
@@ -111,7 +111,7 @@ export class DatabaseStorage implements IStorage {
     
     if (filters) {
       if (filters.status && filters.status.length > 0) {
-        conditions.push(sql`${tasks.status} = ANY(${filters.status})`);
+        conditions.push(inArray(tasks.status, filters.status as any));
       }
       if (filters.category) {
         conditions.push(eq(tasks.category, filters.category as any));

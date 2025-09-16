@@ -217,14 +217,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/daily/generate', isAuthenticated, async (req: any, res) => {
     try {
+      // Add server-side timeout guardrail  
+      res.setTimeout(15000, () => {
+        if (!res.headersSent) {
+          res.status(504).json({ message: 'AI generation timed out' });
+        }
+      });
+
       const { date } = req.body;
       const userId = req.user.id;
       
-      // Get available tasks and recurring tasks
+      // Get available tasks and recurring tasks with instrumentation
+      console.time('fetch_tasks');
       const tasks = await storage.getTasks(userId, { 
         status: ['not_started', 'in_progress'],
       });
+      console.timeEnd('fetch_tasks');
+      
+      console.time('fetch_recurring');
       const recurringTasks = await storage.getRecurringTasks(userId);
+      console.timeEnd('fetch_recurring');
       
       // Get user preferences (you might want to store these in user profile)
       const userPreferences = {
@@ -232,7 +244,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         energyPatterns: {}
       };
       
+      console.time('generate_schedule');
       const aiSchedule = await generateDailySchedule(tasks, recurringTasks, userPreferences);
+      console.timeEnd('generate_schedule');
+      
       res.json(aiSchedule);
     } catch (error) {
       console.error("Error generating daily schedule:", error);

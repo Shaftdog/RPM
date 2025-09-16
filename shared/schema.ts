@@ -250,3 +250,35 @@ export type TaskDependency = typeof taskDependencies.$inferSelect;
 export type InsertTaskDependency = z.infer<typeof insertTaskDependencySchema>;
 export type TaskHierarchy = typeof taskHierarchy.$inferSelect;
 export type InsertTaskHierarchy = z.infer<typeof insertTaskHierarchySchema>;
+
+// Daily Schedule Response Schema (canonical format for OpenAI + local fallback)
+export const dailyScheduleTaskSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  priority: z.enum(["High", "Medium", "Low"]),
+  estimatedTime: z.string(),
+  category: z.string().optional(),
+  subcategory: z.string().optional(),
+});
+
+export const dailyScheduleQuartileSchema = z.object({
+  task: dailyScheduleTaskSchema,
+  start: z.string(),
+  end: z.string(),
+  allocatedTime: z.string(),
+});
+
+export const dailyScheduleBlockSchema = z.object({
+  timeBlock: z.string(),
+  start: z.string(),
+  end: z.string(),
+  quartiles: z.array(dailyScheduleQuartileSchema),
+});
+
+export const dailyScheduleResponseSchema = z.object({
+  schedule: z.array(dailyScheduleBlockSchema),
+  source: z.enum(["openai", "local_fallback"]),
+  totalTasks: z.number().optional(),
+});
+
+export type DailyScheduleResponse = z.infer<typeof dailyScheduleResponseSchema>;

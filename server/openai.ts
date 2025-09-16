@@ -69,6 +69,74 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
   }
 }
 
+// Local fallback scheduler when OpenAI is unavailable
+function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferences: any): any {
+  const schedule = [];
+  
+  // Match the exact schema structure that OpenAI returns
+  const timeBlocks = [
+    { name: "HOUR OF POWER", start: "9:00", end: "10:00" },
+    { name: "CHIEF PROJECT", start: "10:00", end: "12:00" },
+    { name: "PRODUCTION WORK", start: "12:00", end: "13:00" },
+    { name: "COMPANY BLOCK", start: "13:00", end: "14:00" },
+    { name: "BUSINESS AUTOMATION", start: "14:00", end: "15:00" },
+    { name: "PHYSICAL MENTAL", start: "15:00", end: "16:00" },
+    { name: "FLEXIBLE BLOCK", start: "16:00", end: "17:00" }
+  ];
+  
+  // Distribute tasks by priority across time blocks
+  const availableTasks = [...tasks];
+  
+  timeBlocks.forEach((block) => {
+    let quartiles = [];
+    
+    // Assign tasks based on block type and priority
+    let targetTask = null;
+    if (block.name === "CHIEF PROJECT" && availableTasks.some(t => t.priority === "High")) {
+      targetTask = availableTasks.find(t => t.priority === "High");
+    } else if (block.name === "PRODUCTION WORK" && availableTasks.some(t => t.priority === "Medium")) {
+      targetTask = availableTasks.find(t => t.priority === "Medium");
+    } else if (block.name === "FLEXIBLE BLOCK" && availableTasks.some(t => t.priority === "Low")) {
+      targetTask = availableTasks.find(t => t.priority === "Low");
+    } else if (availableTasks.length > 0) {
+      targetTask = availableTasks[0]; // Any remaining task
+    }
+    
+    if (targetTask) {
+      quartiles.push({
+        task: {
+          id: targetTask.id,
+          name: targetTask.name,
+          priority: targetTask.priority,
+          estimatedTime: targetTask.estimatedTime || "1.00"
+        },
+        start: block.start,
+        end: block.end,
+        allocatedTime: "1.00"
+      });
+      
+      // Remove assigned task from available tasks
+      const taskIndex = availableTasks.findIndex(t => t.id === targetTask.id);
+      if (taskIndex > -1) {
+        availableTasks.splice(taskIndex, 1);
+      }
+    }
+    
+    schedule.push({
+      timeBlock: block.name,
+      start: block.start,
+      end: block.end,
+      quartiles
+    });
+  });
+  
+  return {
+    schedule,
+    source: "local_fallback",
+    totalTasks: tasks.length
+  };
+}
+
 export async function generateDailySchedule(
   tasks: any[],
   recurringTasks: any[],
@@ -77,47 +145,58 @@ export async function generateDailySchedule(
     energyPatterns?: Record<string, number>;
   }
 ): Promise<any> {
+  const OPENAI_TIMEOUT_MS = 12000; // 12 second timeout
+  
+  // Check if we have a valid OpenAI API key
+  const hasValidKey = process.env.OPENAI_API_KEY && 
+                     process.env.OPENAI_API_KEY !== "default_key" && 
+                     process.env.OPENAI_API_KEY.startsWith("sk-");
+  
+  if (!hasValidKey) {
+    console.log("OpenAI API key not configured, using local fallback scheduler");
+    return generateLocalSchedule(tasks, recurringTasks, userPreferences);
+  }
+
   try {
+    // Trim inputs to essentials for smaller payload
+    const trimmedTasks = tasks.slice(0, 20).map(t => ({
+      id: t.id,
+      name: t.name,
+      priority: t.priority,
+      estimatedTime: t.estimatedTime,
+      category: t.category,
+      subcategory: t.subcategory
+    }));
+
+    const trimmedRecurring = recurringTasks.slice(0, 10).map(rt => ({
+      taskName: rt.taskName,
+      timeBlock: rt.timeBlock,
+      daysOfWeek: rt.daysOfWeek,
+      durationMinutes: rt.durationMinutes
+    }));
+
     const prompt = `
     Generate an optimized daily schedule based on:
     
-    Available Tasks:
-    ${JSON.stringify(tasks, null, 2)}
+    Available Tasks: ${JSON.stringify(trimmedTasks)}
+    Recurring Tasks: ${JSON.stringify(trimmedRecurring)}
+    User Preferences: ${JSON.stringify(userPreferences)}
     
-    Recurring Tasks:
-    ${JSON.stringify(recurringTasks, null, 2)}
+    Time Blocks: Recover, PHYSICAL MENTAL, CHIEF PROJECT, HOUR OF POWER, PRODUCTION WORK, COMPANY BLOCK, BUSINESS AUTOMATION, ENVIRONMENTAL, FLEXIBLE BLOCK, WIND DOWN
     
-    User Preferences:
-    ${JSON.stringify(userPreferences, null, 2)}
-    
-    Time Blocks Available:
-    - Recover: 12am-7am (4 quartiles)
-    - PHYSICAL MENTAL: 7-9AM (4 quartiles)
-    - CHIEF PROJECT: 9-11AM (4 quartiles)
-    - HOUR OF POWER: 11-12PM (4 quartiles)
-    - PRODUCTION WORK: 12-2PM (4 quartiles)
-    - COMPANY BLOCK: 2-4PM (4 quartiles)
-    - BUSINESS AUTOMATION: 4-6PM (4 quartiles)
-    - ENVIRONMENTAL: 6-8PM (4 quartiles)
-    - FLEXIBLE BLOCK: 8-10PM (4 quartiles)
-    - WIND DOWN: 10PM-12AM (4 quartiles)
-    
-    Rules:
-    1. Fill recurring tasks first in their designated blocks
-    2. Prioritize high-priority tasks in optimal energy slots
-    3. Match task categories to appropriate time blocks
-    4. Respect estimated time requirements
-    5. Consider dependencies
-    
-    Return a JSON object with the schedule structure mapping time blocks to quartiles with assigned tasks.
+    Return JSON with schedule structure mapping time blocks to quartiles with assigned tasks.
     `;
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: "You are an AI scheduling assistant. Create optimal daily schedules that maximize productivity while respecting user preferences and energy patterns."
+          content: "You are an AI scheduling assistant. Create optimal daily schedules that maximize productivity."
         },
         {
           role: "user",
@@ -125,13 +204,19 @@ export async function generateDailySchedule(
         }
       ],
       response_format: { type: "json_object" },
+      max_tokens: 2000,
+    }, {
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
     const result = JSON.parse(response.choices[0].message.content || "{}");
-    return result;
+    return { ...result, source: "openai" };
+    
   } catch (error) {
     console.error("Error generating daily schedule:", error);
-    throw new Error("Failed to generate daily schedule");
+    console.log("Falling back to local scheduler");
+    return generateLocalSchedule(tasks, recurringTasks, userPreferences);
   }
 }
 
