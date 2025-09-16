@@ -103,7 +103,7 @@ export default function TaskCaptureInterface() {
           estimatedTime: task.estimatedTime?.toString(),
           why: task.why,
           description: task.description,
-          dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : null,
+          dueDate: task.dueDate ? new Date(task.dueDate) : null,
         }));
       
       return Promise.all(promises);
