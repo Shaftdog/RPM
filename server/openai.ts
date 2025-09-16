@@ -47,7 +47,7 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -59,7 +59,6 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.3,
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
@@ -114,7 +113,7 @@ export async function generateDailySchedule(
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -126,7 +125,6 @@ export async function generateDailySchedule(
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.2,
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
@@ -172,7 +170,7 @@ export async function processAICommand(
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -184,7 +182,6 @@ export async function processAICommand(
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.4,
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
@@ -201,7 +198,7 @@ export async function processAICommand(
 export async function analyzeImage(base64Image: string): Promise<ExtractedTask[]> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "user",
