@@ -22,32 +22,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { RecurringTask, RecurringSchedule, InsertRecurringTask } from "@shared/schema";
+import { insertRecurringTaskSchema } from "@shared/schema";
 
-type RecurringTask = {
-  id: string;
-  taskName: string;
-  taskType: "Milestone" | "Sub-Milestone" | "Task" | "Subtask";
-  timeBlock: string;
-  daysOfWeek: string[];
-  category: "Personal" | "Business";
-  priority: "High" | "Medium" | "Low";
-  estimatedTime: number;
-  tags: string[];
-  isActive: boolean;
-};
-
-type RecurringSchedule = {
-  id: string;
-  recurringTaskId: string;
-  scheduleType: "weekly" | "monthly" | "quarterly" | "yearly";
-  dayOfWeek?: number;
-  weekOfMonth?: number;
-  dayOfMonth?: number;
-  month?: number;
-  quarter?: number;
-  timeBlock?: string;
-  isActive: boolean;
-};
+// Types imported from @shared/schema
 
 const DAYS_OF_WEEK = [
   "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
@@ -61,6 +47,7 @@ const TIME_BLOCKS = [
 export default function RecurringTasksPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<"weekly" | "monthly" | "quarterly" | "yearly">("weekly");
   const [draggedTask, setDraggedTask] = useState<RecurringTask | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -96,6 +83,52 @@ export default function RecurringTasksPage() {
       });
     },
   });
+
+  // Create recurring task mutation
+  const createTaskMutation = useMutation({
+    mutationFn: async (taskData: InsertRecurringTask) => {
+      const response = await apiRequest("POST", "/api/recurring-tasks", taskData);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/recurring-tasks'] });
+      toast({
+        title: "Task created!",
+        description: "Recurring task created successfully.",
+      });
+      setIsCreateDialogOpen(false);
+      form.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error creating task",
+        description: error.message || "Failed to create task",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Form for creating new recurring task
+  const form = useForm<InsertRecurringTask>({
+    resolver: zodResolver(insertRecurringTaskSchema),
+    defaultValues: {
+      taskName: "",
+      taskType: "Task",
+      timeBlock: "",
+      daysOfWeek: [],
+      category: "Personal",
+      subcategory: "Physical",
+      durationMinutes: 30,
+      energyImpact: 0,
+      description: "",
+      tags: [],
+      isActive: true,
+    },
+  });
+
+  const onSubmit = (data: InsertRecurringTask) => {
+    createTaskMutation.mutate(data);
+  };
 
   const handleDragStart = (task: RecurringTask) => {
     setDraggedTask(task);
@@ -140,15 +173,15 @@ export default function RecurringTasksPage() {
               <Badge variant="outline" className="text-xs">
                 {task.taskType}
               </Badge>
-              <Badge variant={task.priority === "High" ? "destructive" : task.priority === "Medium" ? "default" : "secondary"}>
-                {task.priority}
+              <Badge variant="secondary">
+                Active
               </Badge>
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {task.estimatedTime}h
+                {Math.round(task.durationMinutes/60*10)/10}h
               </span>
             </div>
-            {task.tags.length > 0 && (
+            {task.tags && task.tags.length > 0 && (
               <div className="flex gap-1 mt-1">
                 {task.tags.map((tag, index) => (
                   <Badge key={index} variant="secondary" className="text-xs">
@@ -215,7 +248,7 @@ export default function RecurringTasksPage() {
                   return (
                     <div key={schedule.id} className="text-xs bg-primary/10 border border-primary/20 rounded p-1 mb-1">
                       <div className="font-medium">{task.taskName}</div>
-                      <div className="text-muted-foreground">{task.estimatedTime}h</div>
+                      <div className="text-muted-foreground">{Math.round(task.durationMinutes/60*10)/10}h</div>
                     </div>
                   );
                 })}
@@ -284,14 +317,14 @@ export default function RecurringTasksPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="h-3 w-3" />
-                      {task.estimatedTime}h
+                      {Math.round(task.durationMinutes/60*10)/10}h
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">
                         {task.category}
                       </Badge>
-                      <Badge variant={task.priority === "High" ? "destructive" : task.priority === "Medium" ? "default" : "secondary"}>
-                        {task.priority}
+                      <Badge variant="secondary">
+                        Active
                       </Badge>
                     </div>
                   </div>
@@ -364,10 +397,215 @@ export default function RecurringTasksPage() {
             <Calendar className="h-4 w-4 mr-2" />
             View Calendar
           </Button>
-          <Button size="sm" data-testid="button-create-recurring">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Recurring Task
-          </Button>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" data-testid="button-create-recurring">
+                <Plus className="h-4 w-4 mr-2" />
+                Create Recurring Task
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Create New Recurring Task</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="taskName"
+                      render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel>Task Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Enter task name" {...field} data-testid="input-task-name" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="category"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Category</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-category">
+                                <SelectValue placeholder="Select category" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="Personal">Personal</SelectItem>
+                              <SelectItem value="Business">Business</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="subcategory"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Subcategory</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-subcategory">
+                                <SelectValue placeholder="Select subcategory" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="Physical">Physical</SelectItem>
+                              <SelectItem value="Mental">Mental</SelectItem>
+                              <SelectItem value="Relationship">Relationship</SelectItem>
+                              <SelectItem value="Environmental">Environmental</SelectItem>
+                              <SelectItem value="Financial">Financial</SelectItem>
+                              <SelectItem value="Adventure">Adventure</SelectItem>
+                              <SelectItem value="Marketing">Marketing</SelectItem>
+                              <SelectItem value="Sales">Sales</SelectItem>
+                              <SelectItem value="Operations">Operations</SelectItem>
+                              <SelectItem value="Products">Products</SelectItem>
+                              <SelectItem value="Production">Production</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="timeBlock"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Time Block</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-time-block">
+                                <SelectValue placeholder="Select time block" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {TIME_BLOCKS.map((block) => (
+                                <SelectItem key={block} value={block}>{block}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="durationMinutes"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Duration (minutes)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              placeholder="30" 
+                              {...field}
+                              onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                              data-testid="input-duration"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="daysOfWeek"
+                      render={() => (
+                        <FormItem className="col-span-2">
+                          <FormLabel>Days of Week</FormLabel>
+                          <div className="flex flex-wrap gap-2">
+                            {DAYS_OF_WEEK.map((day) => (
+                              <FormField
+                                key={day}
+                                control={form.control}
+                                name="daysOfWeek"
+                                render={({ field }) => {
+                                  return (
+                                    <FormItem
+                                      key={day}
+                                      className="flex flex-row items-start space-x-3 space-y-0"
+                                    >
+                                      <FormControl>
+                                        <Checkbox
+                                          checked={field.value?.includes(day.toLowerCase()) || false}
+                                          onCheckedChange={(checked) => {
+                                            const value = field.value || [];
+                                            return checked
+                                              ? field.onChange([...value, day.toLowerCase()])
+                                              : field.onChange(value.filter((val) => val !== day.toLowerCase()));
+                                          }}
+                                          data-testid={`checkbox-${day.toLowerCase()}`}
+                                        />
+                                      </FormControl>
+                                      <FormLabel className="text-sm font-normal">
+                                        {day.slice(0,3)}
+                                      </FormLabel>
+                                    </FormItem>
+                                  );
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="description"
+                      render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel>Description (optional)</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="Enter description" 
+                              {...field} 
+                              value={field.value || ""} 
+                              data-testid="textarea-description" 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="flex justify-end space-x-2">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => setIsCreateDialogOpen(false)}
+                      data-testid="button-cancel"
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      type="submit" 
+                      disabled={createTaskMutation.isPending}
+                      data-testid="button-submit"
+                    >
+                      {createTaskMutation.isPending ? "Creating..." : "Create Task"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
