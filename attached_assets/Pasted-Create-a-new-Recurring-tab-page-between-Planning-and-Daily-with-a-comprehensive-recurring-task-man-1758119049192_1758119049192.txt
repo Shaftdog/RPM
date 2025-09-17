@@ -1,0 +1,233 @@
+Create a new "Recurring" tab/page between Planning and Daily with a comprehensive recurring task management system. This page will manage all recurring patterns from daily habits to annual reviews.
+
+## Page Layout Structure
+
+The page should have three main sections:
+1. Weekly Recurring Matrix (top)
+2. Periodic Recurring Section (bottom)  
+3. Recurring Task Library Sidebar (left side)
+
+## 1. WEEKLY RECURRING MATRIX
+
+Create a grid table with:
+- Rows: The 10 daily time blocks:
+  * Recover (12am-7am)
+  * PHYSICAL MENTAL (7-9AM)
+  * CHIEF PROJECT (9-11AM)
+  * HOUR OF POWER (11-12 PM)
+  * PRODUCTION WORK (12-2PM)
+  * COMPANY BLOCK (2-4PM)
+  * BUSINESS AUTOMATION (4-6PM)
+  * ENVIRONMENTAL (6-8PM)
+  * FLEXIBLE BLOCK (8-10PM)
+  * WIND DOWN (10PM-12AM)
+
+- Columns: Sunday through Saturday
+
+- Each cell should:
+  * Accept multiple recurring task assignments via drag-and-drop
+  * Display task references (like "Recurring 1", "Recurring 2" or abbreviated task names)
+  * Show visual indicator when total task time exceeds block duration
+  * Support right-click context menu with options: Edit, Skip This Week, Remove
+  * Be clickable to show task details in a modal
+
+## 2. PERIODIC RECURRING SECTION
+
+Below the weekly matrix, create three subsections:
+
+### Monthly Recurring:
+- Grid with columns: Task Name | Week 1 | Week 2 | Week 3 | Week 4/Last | Specific Day
+- Allow tasks to be scheduled for:
+  * Specific week of month (1st Monday, 3rd Friday)
+  * Specific date (15th of each month)
+  * Last day/weekday of month
+
+### Quarterly Recurring:
+- Grid showing Q1-Q4 with specific end dates
+- Columns: Task Name | Q1 (Mar 31) | Q2 (Jun 30) | Q3 (Sep 30) | Q4 (Dec 31) | Notes
+
+### Yearly Recurring:
+- Grid with columns: Task Name | Jan | Feb | Mar | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov | Dec
+- Each month cell can specify a specific date
+
+## 3. RECURRING TASK LIBRARY SIDEBAR
+
+Create a collapsible sidebar on the left with:
+
+### Search and Filter Section:
+- Search box to find tasks by name
+- Filter buttons for each category:
+  * Personal: Physical, Mental, Relationship, Environmental, Financial, Adventure
+  * Business: Marketing, Sales, Operations, Products, Production
+- Filter by energy impact: Energy Giving (+) vs Energy Draining (-)
+
+### Task Library Display:
+- Group tasks by category with collapsible sections
+- Each task card shows:
+  * Task name with category color coding
+  * Duration (e.g., "45 min")
+  * Energy impact (e.g., "-200" in red or "+100" in green)
+  * Small category icon
+- Tasks are draggable to any cell in weekly or periodic grids
+
+### Create New Task Button:
+- Opens modal with fields:
+  * Task Name (required)
+  * Category (dropdown with all 11 categories)
+  * Task Type (Milestone/Sub-Milestone/Task/Subtask)
+  * Estimated Duration (time picker)
+  * Energy Impact (slider from -500 to +500)
+  * Description/Notes (text area)
+  * Default Time Block (optional dropdown)
+  * Tags (optional)
+
+## 4. DATABASE SCHEMA
+
+Create or update these tables:
+
+recurring_tasks table:
+- id
+- user_id
+- name
+- category (enum of 11 categories)
+- task_type (milestone/sub_milestone/task/subtask)
+- estimated_duration (in minutes)
+- energy_impact (integer -500 to +500)
+- description
+- created_at
+- updated_at
+
+recurring_schedules table:
+- id
+- recurring_task_id
+- schedule_type (weekly/monthly/quarterly/yearly)
+- day_of_week (0-6 for weekly)
+- week_of_month (1-4 or 'last' for monthly)
+- day_of_month (1-31 for monthly/yearly)
+- month (1-12 for yearly)
+- quarter (1-4 for quarterly)
+- time_block (maps to the 10 time blocks)
+- is_active (boolean)
+
+task_skips table:
+- id
+- recurring_schedule_id
+- skip_date
+- reason (optional)
+
+## 5. FUNCTIONALITY REQUIREMENTS
+
+### Drag and Drop:
+- Drag tasks from library to any cell in weekly or periodic grids
+- Drag tasks between cells to reschedule
+- Visual feedback during drag (highlight valid drop zones)
+
+### Click Actions:
+- Click on any recurring task to open detail modal showing all fields
+- Modal includes: Edit, Delete, Skip This Instance, View History buttons
+
+### Skip Logic:
+- "Skip This Week" only affects current week, task returns next week automatically
+- "Skip This Instance" for monthly/quarterly/yearly skips only that occurrence
+- Skipped tasks appear grayed out with strikethrough
+- Track skip history in database
+
+### Multiple Tasks per Block:
+- Cells can contain multiple tasks
+- Show tasks stacked or as comma-separated list
+- Display "2 tasks (90 min)" when compressed
+- Expand on hover to see all tasks
+- Visual warning (red border) if total duration exceeds block duration
+
+### Daily Population:
+- Every night at midnight (or configurable time), populate tomorrow's Daily worksheet
+- Copy all active recurring tasks for that day to the Daily view
+- Link Daily tasks to their recurring source for tracking
+
+### Conflict Detection:
+- Highlight cells where total task duration > block duration
+- Show warning when dragging task would create conflict
+- Provide "Optimize" button that uses AI to redistribute tasks
+
+## 6. VISUAL DESIGN
+
+### Color Coding:
+- Physical: #10B981 (green)
+- Mental: #3B82F6 (blue)
+- Relationship: #EC4899 (pink)
+- Environmental: #84CC16 (lime)
+- Financial: #F59E0B (amber)
+- Adventure: #8B5CF6 (purple)
+- Marketing: #F97316 (orange)
+- Sales: #EF4444 (red)
+- Operations: #6B7280 (gray)
+- Products: #06B6D4 (cyan)
+- Production: #A78BFA (light purple)
+
+### Energy Indicators:
+- High drain (-300 to -500): Deep red with ⚡ icon
+- Medium drain (-100 to -299): Orange
+- Low drain (-1 to -99): Yellow
+- Neutral (0): Gray
+- Energy giving (+1 to +500): Green shades with + icon
+
+### Time Block Styling:
+- Each time block row should show its duration (e.g., "2 hours")
+- Subtle alternating row colors for readability
+- Bold time block names
+
+## 7. INTERACTIVE FEATURES
+
+### Bulk Operations:
+- Select multiple cells (Ctrl+click) to add same task to multiple slots
+- "Apply to all [Monday]s" option when adding weekly task
+- "Clear Week" button to remove all tasks for fresh start
+
+### Templates:
+- Save current week as template
+- Load template dropdown (Workday, Weekend, Vacation, Light Week)
+- Share templates between users (future feature)
+
+### Analytics Preview:
+- "Week Summary" button shows:
+  * Total scheduled hours per category
+  * Energy expenditure graph
+  * Suggested optimizations from AI
+
+### Quick Actions:
+- Keyboard shortcuts:
+  * 'N' - New recurring task
+  * 'S' - Skip selected task
+  * 'D' - Duplicate selected task
+  * '/' - Search tasks
+
+## 8. API ENDPOINTS
+
+Create these endpoints:
+- GET /api/recurring/tasks - Get all recurring tasks for user
+- POST /api/recurring/tasks - Create new recurring task
+- PUT /api/recurring/tasks/:id - Update recurring task
+- DELETE /api/recurring/tasks/:id - Delete recurring task
+- GET /api/recurring/schedule - Get weekly and periodic schedule
+- POST /api/recurring/schedule - Add task to schedule
+- DELETE /api/recurring/schedule/:id - Remove from schedule
+- POST /api/recurring/skip - Skip a task instance
+- POST /api/recurring/populate-daily - Manually trigger daily population
+- GET /api/recurring/templates - Get saved templates
+
+## 9. INTEGRATION POINTS
+
+- When tasks are added here, they should appear in tomorrow's Daily view
+- Monthly/Quarterly/Yearly tasks should also appear in the Planning Matrix at appropriate time horizons
+- Energy calculations should feed into Daily worksheet energy tracking
+- Skip history should be accessible from task detail views
+- AI Assistant should be able to analyze recurring patterns and suggest optimizations
+
+## 10. RESPONSIVE BEHAVIOR
+
+- On mobile: Stack the layout vertically (Library → Weekly → Periodic)
+- Swipe between days in weekly view on mobile
+- Pinch to zoom on the weekly matrix
+- Ensure drag-and-drop works on touch devices
+
+This Recurring page will serve as the backbone of the productivity system, ensuring consistent habits and routines while maintaining flexibility for changes and exceptions.

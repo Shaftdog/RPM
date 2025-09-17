@@ -52,7 +52,9 @@ export const timeHorizonEnum = pgEnum("time_horizon", [
   "VISION", "10 Year", "5 Year", "1 Year", "Quarter", "Week", "Today", "BACKLOG"
 ]);
 export const priorityEnum = pgEnum("priority", ["High", "Medium", "Low"]);
-export const statusEnum = pgEnum("status", ["not_started", "in_progress", "completed", "blocked"]);
+export const statusEnum = pgEnum("status", ["not_started", "in_progress", "completed", "blocked", "cancelled"]);
+export const scheduleTypeEnum = pgEnum("schedule_type", ["weekly", "monthly", "quarterly", "yearly"]);
+export const weekOfMonthEnum = pgEnum("week_of_month", ["1", "2", "3", "4", "last"]);
 
 // Tasks table
 export const tasks = pgTable("tasks", {
@@ -93,20 +95,50 @@ export const taskHierarchy = pgTable("task_hierarchy", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Recurring tasks
+// Enhanced Recurring tasks with comprehensive fields
 export const recurringTasks = pgTable("recurring_tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   taskName: text("task_name").notNull(),
+  taskType: taskTypeEnum("task_type").notNull().default("Task"),
   timeBlock: text("time_block").notNull(), // e.g., "PHYSICAL MENTAL"
   daysOfWeek: jsonb("days_of_week").$type<string[]>().notNull(), // ["monday", "tuesday", ...]
   category: categoryEnum("category").notNull(),
   subcategory: subcategoryEnum("subcategory").notNull(),
   durationMinutes: integer("duration_minutes").notNull(),
+  energyImpact: integer("energy_impact").default(0), // -500 to +500
   quartile: integer("quartile"), // 1-4 for which quartile within the block
+  description: text("description"),
+  defaultTimeBlock: text("default_time_block"), // optional preferred time block
+  tags: jsonb("tags").$type<string[]>(), // array of tags
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Recurring schedules for different patterns (monthly, quarterly, yearly)
+export const recurringSchedules = pgTable("recurring_schedules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recurringTaskId: varchar("recurring_task_id").notNull().references(() => recurringTasks.id, { onDelete: "cascade" }),
+  scheduleType: scheduleTypeEnum("schedule_type").notNull(),
+  dayOfWeek: integer("day_of_week"), // 0-6 for weekly (Sunday=0)
+  weekOfMonth: weekOfMonthEnum("week_of_month"), // 1-4 or 'last' for monthly
+  dayOfMonth: integer("day_of_month"), // 1-31 for monthly/yearly
+  month: integer("month"), // 1-12 for yearly
+  quarter: integer("quarter"), // 1-4 for quarterly
+  timeBlock: text("time_block"), // maps to the 10 time blocks
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Task skips for tracking when users skip recurring instances
+export const taskSkips = pgTable("task_skips", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recurringScheduleId: varchar("recurring_schedule_id").notNull().references(() => recurringSchedules.id, { onDelete: "cascade" }),
+  skipDate: timestamp("skip_date").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Daily schedules
@@ -173,10 +205,26 @@ export const taskHierarchyRelations = relations(taskHierarchy, ({ one }) => ({
   }),
 }));
 
-export const recurringTasksRelations = relations(recurringTasks, ({ one }) => ({
+export const recurringTasksRelations = relations(recurringTasks, ({ one, many }) => ({
   user: one(users, {
     fields: [recurringTasks.userId],
     references: [users.id],
+  }),
+  schedules: many(recurringSchedules),
+}));
+
+export const recurringSchedulesRelations = relations(recurringSchedules, ({ one, many }) => ({
+  recurringTask: one(recurringTasks, {
+    fields: [recurringSchedules.recurringTaskId],
+    references: [recurringTasks.id],
+  }),
+  skips: many(taskSkips),
+}));
+
+export const taskSkipsRelations = relations(taskSkips, ({ one }) => ({
+  recurringSchedule: one(recurringSchedules, {
+    fields: [taskSkips.recurringScheduleId],
+    references: [recurringSchedules.id],
   }),
 }));
 
@@ -226,6 +274,17 @@ export const insertRecurringTaskSchema = createInsertSchema(recurringTasks).omit
   updatedAt: true,
 });
 
+export const insertRecurringScheduleSchema = createInsertSchema(recurringSchedules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTaskSkipSchema = createInsertSchema(taskSkips).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertDailyScheduleSchema = createInsertSchema(dailySchedules).omit({
   id: true,
   userId: true,
@@ -256,6 +315,10 @@ export type TaskDependency = typeof taskDependencies.$inferSelect;
 export type InsertTaskDependency = z.infer<typeof insertTaskDependencySchema>;
 export type TaskHierarchy = typeof taskHierarchy.$inferSelect;
 export type InsertTaskHierarchy = z.infer<typeof insertTaskHierarchySchema>;
+export type RecurringSchedule = typeof recurringSchedules.$inferSelect;
+export type InsertRecurringSchedule = z.infer<typeof insertRecurringScheduleSchema>;
+export type TaskSkip = typeof taskSkips.$inferSelect;
+export type InsertTaskSkip = z.infer<typeof insertTaskSkipSchema>;
 
 // Daily Schedule Response Schema (canonical format for OpenAI + local fallback)
 export const dailyScheduleTaskSchema = z.object({
