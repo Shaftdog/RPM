@@ -86,15 +86,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/tasks', isAuthenticated, async (req: any, res) => {
     try {
+      const parseDate = (value: unknown) => {
+        if (typeof value !== "string") return undefined;
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+      };
+
+      const dueDateGte = parseDate(req.query.dueDateGte);
+      const dueDateLte = parseDate(req.query.dueDateLte);
+      const singleDueDate = parseDate(req.query.dueDate);
+
       const filters = {
         status: req.query.status ? req.query.status.split(',') : undefined,
         category: req.query.category,
         subcategory: req.query.subcategory,
         timeHorizon: req.query.timeHorizon,
-        dueDate: req.query.dueDate ? {
-          gte: req.query.dueDateGte ? new Date(req.query.dueDateGte) : undefined,
-          lte: req.query.dueDateLte ? new Date(req.query.dueDateLte) : undefined,
-        } : undefined,
+        dueDate:
+          dueDateGte || dueDateLte
+            ? {
+                gte: dueDateGte,
+                lte: dueDateLte,
+              }
+            : singleDueDate
+            ? {
+                gte: singleDueDate,
+                lte: singleDueDate,
+              }
+            : undefined,
       };
       
       const tasks = await storage.getTasks(req.user.id, filters);
