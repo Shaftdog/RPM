@@ -62,6 +62,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/user', isAuthenticated, async (req: any, res) => {
     try {
+      // Disable caching to prevent 304 responses that break authentication
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+      res.set('ETag', Date.now().toString());
+      
       const user = await storage.getUser(req.user.id);
       if (!user) {
         return res.status(404).json({ message: "User not found" });

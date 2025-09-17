@@ -198,6 +198,7 @@ export default function RecurringTasksPage() {
       const response = await fetch('/api/recurring-tasks/extract', {
         method: 'POST',
         body: formData,
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -278,6 +279,7 @@ export default function RecurringTasksPage() {
             recurringTasks: recurringTasks.slice(0, 10), // Send limited context
           }
         }),
+        credentials: 'include',
       });
 
       if (!response.ok) {
