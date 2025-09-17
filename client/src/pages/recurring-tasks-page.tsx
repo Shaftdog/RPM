@@ -25,7 +25,8 @@ import {
   CheckCircle,
   Download,
   X,
-  Loader2
+  Loader2,
+  Library
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -34,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -93,6 +95,7 @@ export default function RecurringTasksPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<"weekly" | "monthly" | "quarterly" | "yearly">("weekly");
   const [draggedTask, setDraggedTask] = useState<RecurringTask | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isTaskLibraryOpen, setIsTaskLibraryOpen] = useState(false);
   
   // AI Assistant state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -1294,15 +1297,10 @@ export default function RecurringTasksPage() {
         </div>
       </div>
 
-      {/* Responsive Grid Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-8 xl:grid-cols-12 gap-6">
-        {/* Task Library Sidebar */}
-        <div className="md:col-span-2 xl:col-span-2">
-          <TaskLibrarySidebar />
-        </div>
-        
-        {/* Main content area */}
-        <div className="md:col-span-3 xl:col-span-6 space-y-6">
+      {/* Responsive Grid Layout - Full Width */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">        
+        {/* Main content area - Weekly Matrix */}
+        <div className="space-y-6">
           {/* Weekly Matrix */}
           <Card>
             <CardHeader>
@@ -1331,10 +1329,35 @@ export default function RecurringTasksPage() {
         </div>
 
         {/* AI Recurring Assistant - Right Panel */}
-        <div className="md:col-span-3 xl:col-span-4">
+        <div>
           <AIRecurringAssistant />
         </div>
       </div>
+
+      {/* Floating Task Library Toggle Button */}
+      <Sheet open={isTaskLibraryOpen} onOpenChange={setIsTaskLibraryOpen}>
+        <SheetTrigger asChild>
+          <Button 
+            size="lg"
+            className="fixed bottom-6 left-6 rounded-full shadow-lg z-50"
+            data-testid="task-library-toggle"
+          >
+            <Library className="h-5 w-5 mr-2" />
+            Task Library
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="w-80 sm:w-96">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Library className="h-5 w-5" />
+              Task Library
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-6">
+            <TaskLibrarySidebar />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
