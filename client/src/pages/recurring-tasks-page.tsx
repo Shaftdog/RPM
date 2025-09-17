@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Slider } from "@/components/ui/slider";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { RecurringTask, RecurringSchedule, InsertRecurringTask } from "@shared/schema";
@@ -188,6 +189,14 @@ export default function RecurringTasksPage() {
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {Math.round(task.durationMinutes/60*10)/10}h
+              </span>
+              <span 
+                className={`flex items-center gap-1 text-xs font-medium ${
+                  (task.energyImpact ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                }`}
+                data-testid={`energy-impact-${task.id}`}
+              >
+                {(task.energyImpact ?? 0) >= 0 ? '+' : ''}{task.energyImpact ?? 0}
               </span>
             </div>
             {task.tags && task.tags.length > 0 && (
@@ -433,6 +442,30 @@ export default function RecurringTasksPage() {
                         </FormItem>
                       )}
                     />
+
+                    <FormField
+                      control={form.control}
+                      name="taskType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Task Type</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-task-type">
+                                <SelectValue placeholder="Select task type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="Milestone">Milestone</SelectItem>
+                              <SelectItem value="Sub-Milestone">Sub-Milestone</SelectItem>
+                              <SelectItem value="Task">Task</SelectItem>
+                              <SelectItem value="Subtask">Subtask</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     
                     <FormField
                       control={form.control}
@@ -525,6 +558,65 @@ export default function RecurringTasksPage() {
                               data-testid="input-duration"
                             />
                           </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="energyImpact"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Energy Impact</FormLabel>
+                          <FormControl>
+                            <div className="space-y-2">
+                              <Slider
+                                min={-500}
+                                max={500}
+                                step={50}
+                                value={[field.value || 0]}
+                                onValueChange={(value) => field.onChange(value[0])}
+                                className="w-full"
+                                data-testid="slider-energy-impact"
+                              />
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-red-500">Draining</span>
+                                <span 
+                                  className={`font-medium ${
+                                    (field.value || 0) >= 0 ? 'text-green-500' : 'text-red-500'
+                                  }`}
+                                  data-testid="text-energy-value"
+                                >
+                                  {field.value || 0}
+                                </span>
+                                <span className="text-green-500">Energizing</span>
+                              </div>
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="priority"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Priority</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-priority">
+                                <SelectValue placeholder="Select priority" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="High">High</SelectItem>
+                              <SelectItem value="Medium">Medium</SelectItem>
+                              <SelectItem value="Low">Low</SelectItem>
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
