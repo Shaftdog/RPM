@@ -574,7 +574,7 @@ export default function RecurringTasksPage() {
                               <Slider
                                 min={-500}
                                 max={500}
-                                step={50}
+                                step={25}
                                 value={[field.value || 0]}
                                 onValueChange={(value) => field.onChange(value[0])}
                                 className="w-full"
