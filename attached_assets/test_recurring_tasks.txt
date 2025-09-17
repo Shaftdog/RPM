@@ -1,0 +1,45 @@
+Recurring Tasks for Personal Productivity System
+
+# Morning Routine Tasks
+- Daily meditation practice: 20 minutes every morning at 7:00 AM
+- Gym workout sessions: 1.5 hours on Monday, Wednesday, Friday mornings  
+- Protein smoothie preparation: 10 minutes daily after workout
+- Review daily goals and priorities: 15 minutes at 8:30 AM
+
+# Work-Related Recurring Tasks
+- Team standup meetings: 30 minutes every weekday at 9:00 AM
+- Weekly client check-ins: 45 minutes every Friday afternoon
+- Monthly financial report review: 2 hours first Monday of each month
+- Quarterly business planning session: 4 hours every 3 months
+
+# Personal Development
+- Read industry articles: 30 minutes every evening
+- Practice coding skills: 1 hour Tuesday and Thursday evenings
+- Language learning session: 25 minutes daily using Duolingo
+- Write in journal: 15 minutes before bed every night
+
+# Health & Wellness
+- Meal prep session: 2 hours every Sunday afternoon
+- Doctor appointments: 30 minutes quarterly
+- Dental cleaning: 1 hour every 6 months
+- Weekly grocery shopping: 1 hour Saturday mornings
+
+# Social & Relationship
+- Family video call: 45 minutes every Sunday evening
+- Date night planning: 30 minutes every other Friday
+- Friend catch-up calls: 30 minutes every other week
+- Community volunteer work: 3 hours first Saturday of each month
+
+# Home Maintenance
+- House cleaning deep clean: 3 hours every other weekend
+- Car maintenance check: 1 hour monthly
+- Garden watering and care: 30 minutes daily in summer
+- Bills review and payment: 45 minutes first Sunday of month
+
+# Business Automation
+- Social media content creation: 2 hours every Sunday
+- Email newsletter writing: 1 hour every Thursday
+- Website analytics review: 30 minutes weekly
+- Customer feedback analysis: 1 hour monthly
+
+Each task should be categorized by energy impact (-200 to +200), priority (High/Medium/Low), and time block preference.

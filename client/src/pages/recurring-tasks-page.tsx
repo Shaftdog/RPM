@@ -470,8 +470,8 @@ export default function RecurringTasksPage() {
 
       {/* Time block rows */}
       {TIME_BLOCKS.map((timeBlock) => (
-        <>
-          <div key={timeBlock} className="text-xs font-medium text-muted-foreground p-2 border-r">
+        <React.Fragment key={timeBlock}>
+          <div className="text-xs font-medium text-muted-foreground p-2 border-r">
             {timeBlock}
           </div>
           {DAYS_OF_WEEK.map((day, dayIndex) => (
