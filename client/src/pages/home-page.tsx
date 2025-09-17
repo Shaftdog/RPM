@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import HeaderNavigation from "@/components/header-navigation";
 import TaskCaptureInterface from "@/components/task-capture-interface";
 import StrategicPlanningMatrix from "@/components/strategic-planning-matrix";
@@ -8,7 +9,24 @@ import RecurringTasksPage from "@/pages/recurring-tasks-page";
 type TabType = "capture" | "planning" | "daily" | "recurring";
 
 export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<TabType>("capture");
+  const [location] = useLocation();
+  
+  // Determine initial tab from URL path
+  const getInitialTab = (): TabType => {
+    const path = location.replace("/", "");
+    if (path === "capture" || path === "planning" || path === "daily" || path === "recurring") {
+      return path as TabType;
+    }
+    return "capture"; // default
+  };
+  
+  const [activeTab, setActiveTab] = useState<TabType>(getInitialTab());
+  
+  // Update tab when URL changes
+  useEffect(() => {
+    const newTab = getInitialTab();
+    setActiveTab(newTab);
+  }, [location]);
 
   return (
     <div className="min-h-screen bg-background">
