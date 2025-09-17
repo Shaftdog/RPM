@@ -1263,14 +1263,15 @@ export default function RecurringTasksPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-6 gap-6">
+      {/* Responsive Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Task Library Sidebar */}
-        <div className="col-span-1">
+        <div className="lg:col-span-2">
           <TaskLibrarySidebar />
         </div>
         
         {/* Main content area */}
-        <div className="col-span-3 space-y-6">
+        <div className="lg:col-span-6 space-y-6">
           {/* Weekly Matrix */}
           <Card>
             <CardHeader>
@@ -1299,7 +1300,7 @@ export default function RecurringTasksPage() {
         </div>
 
         {/* AI Recurring Assistant - Right Panel */}
-        <div className="col-span-2">
+        <div className="lg:col-span-4">
           <AIRecurringAssistant />
         </div>
       </div>
