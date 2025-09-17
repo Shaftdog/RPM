@@ -13,8 +13,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Filter, BarChart3, Clock, Target, Calendar, User, Tag } from "lucide-react";
+import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X } from "lucide-react";
 
 interface Task {
   id: string;
@@ -33,6 +41,8 @@ export default function StrategicPlanningMatrix() {
   const [aiCommand, setAiCommand] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isTaskDetailsOpen, setIsTaskDetailsOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFormData, setEditFormData] = useState<Task | null>(null);
   const { toast } = useToast();
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
@@ -90,6 +100,36 @@ export default function StrategicPlanningMatrix() {
     },
   });
 
+  const updateTaskMutation = useMutation({
+    mutationFn: async (taskData: Task) => {
+      const response = await fetch(`/api/tasks/${taskData.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(taskData),
+      });
+      if (!response.ok) throw new Error('Failed to update task');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+      toast({
+        title: "Task updated successfully!",
+        description: "Your changes have been saved.",
+      });
+      setIsEditing(false);
+      setEditFormData(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error updating task",
+        description: error.message || "Something went wrong",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Organize tasks by matrix structure
   const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Quarter', 'Week', 'Today', 'BACKLOG'];
   const categories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure', 'Marketing', 'Sales', 'Operations', 'Products', 'Production'];
@@ -137,6 +177,32 @@ export default function StrategicPlanningMatrix() {
     if (e.detail === 1) { // Single click only
       setSelectedTask(task);
       setIsTaskDetailsOpen(true);
+      setIsEditing(false);
+      setEditFormData(null);
+    }
+  };
+
+  const handleEditStart = () => {
+    if (selectedTask) {
+      setEditFormData({ ...selectedTask });
+      setIsEditing(true);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setIsEditing(false);
+    setEditFormData(null);
+  };
+
+  const handleEditSave = () => {
+    if (editFormData) {
+      updateTaskMutation.mutate(editFormData);
+    }
+  };
+
+  const updateEditField = (field: keyof Task, value: string | number) => {
+    if (editFormData) {
+      setEditFormData({ ...editFormData, [field]: value });
     }
   };
 
@@ -397,12 +463,25 @@ export default function StrategicPlanningMatrix() {
       <Dialog open={isTaskDetailsOpen} onOpenChange={setIsTaskDetailsOpen}>
         <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">
-              Task Details
-            </DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-lg font-semibold">
+                {isEditing ? "Edit Task" : "Task Details"}
+              </DialogTitle>
+              {!isEditing && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEditStart}
+                  data-testid="button-edit-task"
+                >
+                  <Edit3 className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+              )}
+            </div>
           </DialogHeader>
           
-          {selectedTask && (
+          {selectedTask && !isEditing && (
             <div className="space-y-6">
               {/* Task Name */}
               <div>
@@ -522,14 +601,200 @@ export default function StrategicPlanningMatrix() {
             </div>
           )}
 
-          <div className="flex justify-end mt-6">
-            <Button 
-              variant="outline" 
-              onClick={() => setIsTaskDetailsOpen(false)}
-              data-testid="button-close-task-details"
-            >
-              Close
-            </Button>
+          {/* Edit Mode */}
+          {editFormData && isEditing && (
+            <div className="space-y-6">
+              {/* Task Name */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Task Name</Label>
+                <Input
+                  value={editFormData.name}
+                  onChange={(e) => updateEditField('name', e.target.value)}
+                  data-testid="input-edit-task-name"
+                />
+              </div>
+
+              {/* Task Type and Category */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Type</Label>
+                  <Select 
+                    value={editFormData.type} 
+                    onValueChange={(value) => updateEditField('type', value)}
+                  >
+                    <SelectTrigger data-testid="select-edit-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Milestone">Milestone</SelectItem>
+                      <SelectItem value="Sub-Milestone">Sub-Milestone</SelectItem>
+                      <SelectItem value="Task">Task</SelectItem>
+                      <SelectItem value="Subtask">Subtask</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Category</Label>
+                  <Select 
+                    value={editFormData.category} 
+                    onValueChange={(value) => updateEditField('category', value as "Personal" | "Business")}
+                  >
+                    <SelectTrigger data-testid="select-edit-category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Personal">Personal</SelectItem>
+                      <SelectItem value="Business">Business</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Priority and Estimated Time */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Priority</Label>
+                  <Select 
+                    value={editFormData.priority} 
+                    onValueChange={(value) => updateEditField('priority', value as "High" | "Medium" | "Low")}
+                  >
+                    <SelectTrigger data-testid="select-edit-priority">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="High">High</SelectItem>
+                      <SelectItem value="Medium">Medium</SelectItem>
+                      <SelectItem value="Low">Low</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Estimated Time (hours)</Label>
+                  <Input
+                    type="number"
+                    min="0.5"
+                    step="0.5"
+                    value={editFormData.estimatedTime}
+                    onChange={(e) => updateEditField('estimatedTime', e.target.value)}
+                    data-testid="input-edit-estimated-time"
+                  />
+                </div>
+              </div>
+
+              {/* Time Horizon */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Time Horizon</Label>
+                <Select 
+                  value={editFormData.timeHorizon} 
+                  onValueChange={(value) => updateEditField('timeHorizon', value)}
+                >
+                  <SelectTrigger data-testid="select-edit-time-horizon">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Today">Today</SelectItem>
+                    <SelectItem value="Week">This Week</SelectItem>
+                    <SelectItem value="Quarter">This Quarter</SelectItem>
+                    <SelectItem value="1 Year">1 Year</SelectItem>
+                    <SelectItem value="5 Year">5 Year</SelectItem>
+                    <SelectItem value="10 Year">10 Year</SelectItem>
+                    <SelectItem value="VISION">Vision</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Focus Area (Subcategory) */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Focus Area</Label>
+                <Select 
+                  value={editFormData.subcategory} 
+                  onValueChange={(value) => updateEditField('subcategory', value)}
+                >
+                  <SelectTrigger data-testid="select-edit-subcategory">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Physical">Physical</SelectItem>
+                    <SelectItem value="Mental">Mental</SelectItem>
+                    <SelectItem value="Relationship">Relationship</SelectItem>
+                    <SelectItem value="Environmental">Environmental</SelectItem>
+                    <SelectItem value="Financial">Financial</SelectItem>
+                    <SelectItem value="Adventure">Adventure</SelectItem>
+                    <SelectItem value="Marketing">Marketing</SelectItem>
+                    <SelectItem value="Sales">Sales</SelectItem>
+                    <SelectItem value="Operations">Operations</SelectItem>
+                    <SelectItem value="Products">Products</SelectItem>
+                    <SelectItem value="Production">Production</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Progress */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Progress (%)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={editFormData.progress}
+                  onChange={(e) => updateEditField('progress', parseInt(e.target.value) || 0)}
+                  data-testid="input-edit-progress"
+                />
+              </div>
+
+              {/* Status */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Status</Label>
+                <Select 
+                  value={editFormData.status} 
+                  onValueChange={(value) => updateEditField('status', value)}
+                >
+                  <SelectTrigger data-testid="select-edit-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_started">Not Started</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="blocked">Blocked</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end space-x-2 mt-6">
+            {isEditing ? (
+              <>
+                <Button 
+                  variant="outline" 
+                  onClick={handleEditCancel}
+                  data-testid="button-cancel-edit"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleEditSave}
+                  disabled={updateTaskMutation.isPending}
+                  data-testid="button-save-task"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {updateTaskMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </>
+            ) : (
+              <Button 
+                variant="outline" 
+                onClick={() => setIsTaskDetailsOpen(false)}
+                data-testid="button-close-task-details"
+              >
+                Close
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
