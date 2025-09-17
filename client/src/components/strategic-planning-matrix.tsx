@@ -6,8 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Filter, BarChart3 } from "lucide-react";
+import { Filter, BarChart3, Clock, Target, Calendar, User, Tag } from "lucide-react";
 
 interface Task {
   id: string;
@@ -24,6 +31,8 @@ interface Task {
 
 export default function StrategicPlanningMatrix() {
   const [aiCommand, setAiCommand] = useState("");
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isTaskDetailsOpen, setIsTaskDetailsOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
@@ -120,6 +129,14 @@ export default function StrategicPlanningMatrix() {
         newTimeHorizon: timeHorizon,
         newSubcategory: subcategory,
       });
+    }
+  };
+
+  const handleTaskClick = (e: React.MouseEvent, task: Task) => {
+    // Don't open details if user is dragging
+    if (e.detail === 1) { // Single click only
+      setSelectedTask(task);
+      setIsTaskDetailsOpen(true);
     }
   };
 
@@ -223,7 +240,8 @@ export default function StrategicPlanningMatrix() {
                                   key={task.id}
                                   draggable
                                   onDragStart={(e) => handleDragStart(e, task)}
-                                  className={`p-2 rounded text-xs cursor-move border-l-4 ${
+                                  onClick={(e) => handleTaskClick(e, task)}
+                                  className={`p-2 rounded text-xs cursor-pointer border-l-4 ${
                                     horizon === 'BACKLOG'
                                       ? 'bg-muted border-muted-foreground'
                                       : isPersonal
@@ -374,6 +392,147 @@ export default function StrategicPlanningMatrix() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Task Details Modal */}
+      <Dialog open={isTaskDetailsOpen} onOpenChange={setIsTaskDetailsOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">
+              Task Details
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedTask && (
+            <div className="space-y-6">
+              {/* Task Name */}
+              <div>
+                <Label className="text-base font-medium">{selectedTask.name}</Label>
+              </div>
+
+              {/* Task Overview */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Tag className="h-4 w-4 text-muted-foreground" />
+                    <Label className="text-sm font-medium">Type</Label>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    {selectedTask.type}
+                  </Badge>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <Label className="text-sm font-medium">Category</Label>
+                  </div>
+                  <Badge 
+                    variant="outline" 
+                    className={`text-xs ${
+                      selectedTask.category === 'Personal' 
+                        ? 'bg-personal/10 text-personal border-personal' 
+                        : 'bg-business/10 text-business border-business'
+                    }`}
+                  >
+                    {selectedTask.category}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Target className="h-4 w-4 text-muted-foreground" />
+                    <Label className="text-sm font-medium">Priority</Label>
+                  </div>
+                  <Badge 
+                    variant="outline"
+                    className={`text-xs ${
+                      selectedTask.priority === 'High' 
+                        ? 'bg-red-100 text-red-800 border-red-200' 
+                        : selectedTask.priority === 'Medium'
+                        ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                        : 'bg-green-100 text-green-800 border-green-200'
+                    }`}
+                  >
+                    {selectedTask.priority}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <Label className="text-sm font-medium">Estimated Time</Label>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {selectedTask.estimatedTime} hours
+                  </div>
+                </div>
+              </div>
+
+              {/* Time Horizon */}
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-sm font-medium">Time Horizon</Label>
+                </div>
+                <Badge variant="secondary" className="text-xs">
+                  {selectedTask.timeHorizon}
+                </Badge>
+              </div>
+
+              {/* Subcategory */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Focus Area</Label>
+                <div className="text-sm text-muted-foreground">
+                  {selectedTask.subcategory}
+                </div>
+              </div>
+
+              {/* Progress */}
+              {selectedTask.progress > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm font-medium">Progress</Label>
+                    <span className="text-xs text-muted-foreground">
+                      {selectedTask.progress}%
+                    </span>
+                  </div>
+                  <Progress value={selectedTask.progress} className="h-2" />
+                </div>
+              )}
+
+              {/* Status */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Status</Label>
+                <Badge 
+                  variant={selectedTask.status === 'completed' ? 'default' : 'outline'}
+                  className="text-xs"
+                >
+                  {selectedTask.status}
+                </Badge>
+              </div>
+
+              {/* Task ID for reference */}
+              <div className="pt-4 border-t">
+                <div className="text-xs text-muted-foreground">
+                  Task ID: {selectedTask.id}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end mt-6">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsTaskDetailsOpen(false)}
+              data-testid="button-close-task-details"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
