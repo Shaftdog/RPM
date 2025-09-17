@@ -40,8 +40,16 @@ const DAYS_OF_WEEK = [
 ];
 
 const TIME_BLOCKS = [
-  "Early Morning", "Morning", "Late Morning", "Lunch", 
-  "Early Afternoon", "Late Afternoon", "Evening", "Night"
+  "Recover (12am-7am)",
+  "PHYSICAL MENTAL (7-9AM)",
+  "CHIEF PROJECT (9-11AM)",
+  "HOUR OF POWER (11-12PM)",
+  "PRODUCTION WORK (12-2PM)",
+  "COMPANY BLOCK (2-4PM)",
+  "BUSINESS AUTOMATION (4-6PM)",
+  "ENVIRONMENTAL (6-8PM)",
+  "FLEXIBLE BLOCK (8-10PM)",
+  "WIND DOWN (10PM-12AM)"
 ];
 
 export default function RecurringTasksPage() {
@@ -120,6 +128,7 @@ export default function RecurringTasksPage() {
       subcategory: "Physical",
       durationMinutes: 30,
       energyImpact: 0,
+      priority: "Medium",
       description: "",
       tags: [],
       isActive: true,
