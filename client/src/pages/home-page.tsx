@@ -3,8 +3,9 @@ import HeaderNavigation from "@/components/header-navigation";
 import TaskCaptureInterface from "@/components/task-capture-interface";
 import StrategicPlanningMatrix from "@/components/strategic-planning-matrix";
 import DailyWorksheet from "@/components/daily-worksheet";
+import RecurringTasksPage from "@/pages/recurring-tasks-page";
 
-type TabType = "capture" | "planning" | "daily";
+type TabType = "capture" | "planning" | "daily" | "recurring";
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabType>("capture");
@@ -17,6 +18,7 @@ export default function HomePage() {
         {activeTab === "capture" && <TaskCaptureInterface />}
         {activeTab === "planning" && <StrategicPlanningMatrix />}
         {activeTab === "daily" && <DailyWorksheet />}
+        {activeTab === "recurring" && <RecurringTasksPage />}
       </main>
     </div>
   );

@@ -30,8 +30,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface HeaderNavigationProps {
-  activeTab: "capture" | "planning" | "daily";
-  onTabChange: (tab: "capture" | "planning" | "daily") => void;
+  activeTab: "capture" | "planning" | "daily" | "recurring";
+  onTabChange: (tab: "capture" | "planning" | "daily" | "recurring") => void;
 }
 
 export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavigationProps) {
@@ -149,6 +149,13 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
                 data-testid="tab-daily"
               >
                 Daily
+              </Button>
+              <Button
+                variant={activeTab === "recurring" ? "default" : "secondary"}
+                onClick={() => onTabChange("recurring")}
+                data-testid="tab-recurring"
+              >
+                Recurring
               </Button>
             </nav>
           </div>
