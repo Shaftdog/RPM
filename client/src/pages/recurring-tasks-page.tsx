@@ -191,8 +191,8 @@ export default function RecurringTasksPage() {
     setIsUploading(true);
     try {
       const formData = new FormData();
-      files.forEach((file, index) => {
-        formData.append(`file${index}`, file);
+      files.forEach((file) => {
+        formData.append('files', file);
       });
 
       const response = await fetch('/api/recurring-tasks/extract', {
