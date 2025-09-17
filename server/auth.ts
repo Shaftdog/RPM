@@ -121,9 +121,15 @@ export function setupAuth(app: Express) {
         return res.status(500).json({ message: "Session regeneration failed" });
       }
       // Re-login after session regeneration
+      if (!req.user) {
+        return res.status(500).json({ message: "User not found after authentication" });
+      }
       req.login(req.user, (loginErr) => {
         if (loginErr) {
           return res.status(500).json({ message: "Login failed" });
+        }
+        if (!req.user) {
+          return res.status(500).json({ message: "User not found after login" });
         }
         const { password, ...safeUser } = req.user;
         res.status(200).json(safeUser);

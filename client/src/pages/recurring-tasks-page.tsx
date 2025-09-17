@@ -349,11 +349,33 @@ export default function RecurringTasksPage() {
           isActive: true,
         };
         
-        await apiRequest("POST", "/api/recurring-tasks", taskData);
+        // Create the recurring task first
+        const response = await apiRequest("POST", "/api/recurring-tasks", taskData);
+        const createdTask = await response.json();
+        
+        // Create schedule entries for each specified day of the week
+        for (const dayName of task.daysOfWeek) {
+          const dayIndex = DAYS_OF_WEEK.findIndex(day => 
+            day.toLowerCase() === dayName.toLowerCase()
+          );
+          
+          if (dayIndex !== -1) {
+            const scheduleData = {
+              recurringTaskId: createdTask.id,
+              scheduleType: "weekly" as const,
+              dayOfWeek: dayIndex,
+              timeBlock: task.timeBlock,
+              isActive: true,
+            };
+            
+            await apiRequest("POST", "/api/recurring/schedule", scheduleData);
+          }
+        }
       }
 
-      // Refresh recurring tasks
+      // Refresh both recurring tasks and schedules
       queryClient.invalidateQueries({ queryKey: ['/api/recurring-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/recurring/schedule'] });
       
       // Clear applied tasks
       setExtractedTasks(prev => prev.filter(task => !task.selected));
