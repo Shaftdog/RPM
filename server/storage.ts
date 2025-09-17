@@ -2,6 +2,8 @@ import {
   users,
   tasks,
   recurringTasks,
+  recurringSchedules,
+  taskSkips,
   dailySchedules,
   taskDependencies,
   taskHierarchy,
@@ -11,6 +13,10 @@ import {
   type InsertTask,
   type RecurringTask,
   type InsertRecurringTask,
+  type RecurringSchedule,
+  type InsertRecurringSchedule,
+  type TaskSkip,
+  type InsertTaskSkip,
   type DailySchedule,
   type InsertDailySchedule,
   type TaskDependency,
@@ -49,6 +55,17 @@ export interface IStorage {
   createRecurringTask(task: InsertRecurringTask & { userId: string }): Promise<RecurringTask>;
   updateRecurringTask(id: string, userId: string, updates: Partial<InsertRecurringTask>): Promise<RecurringTask>;
   deleteRecurringTask(id: string, userId: string): Promise<void>;
+
+  // Recurring schedule operations
+  getRecurringSchedules(userId: string, recurringTaskId?: string): Promise<RecurringSchedule[]>;
+  createRecurringSchedule(schedule: InsertRecurringSchedule, userId: string): Promise<RecurringSchedule>;
+  updateRecurringSchedule(id: string, userId: string, updates: Partial<InsertRecurringSchedule>): Promise<RecurringSchedule>;
+  deleteRecurringSchedule(id: string, userId: string): Promise<void>;
+
+  // Task skip operations  
+  getTaskSkips(recurringScheduleId: string, userId: string): Promise<TaskSkip[]>;
+  createTaskSkip(skip: InsertTaskSkip, userId: string): Promise<TaskSkip>;
+  deleteTaskSkip(id: string, userId: string): Promise<void>;
 
   // Daily schedule operations
   getDailySchedule(userId: string, date: Date): Promise<DailySchedule[]>;
@@ -173,7 +190,7 @@ export class DatabaseStorage implements IStorage {
   async createRecurringTask(task: InsertRecurringTask & { userId: string }): Promise<RecurringTask> {
     const [newTask] = await db
       .insert(recurringTasks)
-      .values(task)
+      .values({ ...task, updatedAt: new Date() } as typeof recurringTasks.$inferInsert)
       .returning();
     return newTask;
   }
@@ -181,7 +198,7 @@ export class DatabaseStorage implements IStorage {
   async updateRecurringTask(id: string, userId: string, updates: Partial<InsertRecurringTask>): Promise<RecurringTask> {
     const [updatedTask] = await db
       .update(recurringTasks)
-      .set(updates)
+      .set({ ...updates, updatedAt: new Date() } as Partial<typeof recurringTasks.$inferInsert>)
       .where(and(eq(recurringTasks.id, id), eq(recurringTasks.userId, userId)))
       .returning();
     return updatedTask;
@@ -189,6 +206,132 @@ export class DatabaseStorage implements IStorage {
 
   async deleteRecurringTask(id: string, userId: string): Promise<void> {
     await db.delete(recurringTasks).where(and(eq(recurringTasks.id, id), eq(recurringTasks.userId, userId)));
+  }
+
+  // Recurring schedule operations
+  async getRecurringSchedules(userId: string, recurringTaskId?: string): Promise<RecurringSchedule[]> {
+    const conditions = [
+      eq(recurringSchedules.isActive, true),
+      eq(recurringTasks.userId, userId)
+    ];
+    
+    if (recurringTaskId) {
+      conditions.push(eq(recurringSchedules.recurringTaskId, recurringTaskId));
+    }
+    
+    return db.select({
+      id: recurringSchedules.id,
+      recurringTaskId: recurringSchedules.recurringTaskId,
+      scheduleType: recurringSchedules.scheduleType,
+      dayOfWeek: recurringSchedules.dayOfWeek,
+      weekOfMonth: recurringSchedules.weekOfMonth,
+      dayOfMonth: recurringSchedules.dayOfMonth,
+      month: recurringSchedules.month,
+      quarter: recurringSchedules.quarter,
+      timeBlock: recurringSchedules.timeBlock,
+      isActive: recurringSchedules.isActive,
+      createdAt: recurringSchedules.createdAt,
+      updatedAt: recurringSchedules.updatedAt,
+    })
+      .from(recurringSchedules)
+      .innerJoin(recurringTasks, eq(recurringSchedules.recurringTaskId, recurringTasks.id))
+      .where(and(...conditions));
+  }
+
+  async createRecurringSchedule(schedule: InsertRecurringSchedule, userId: string): Promise<RecurringSchedule> {
+    // Verify the recurring task belongs to the user
+    const taskOwnership = await db.select({ id: recurringTasks.id })
+      .from(recurringTasks)
+      .where(and(eq(recurringTasks.id, schedule.recurringTaskId), eq(recurringTasks.userId, userId)))
+      .limit(1);
+    
+    if (taskOwnership.length === 0) {
+      throw new Error('Unauthorized: recurring task not found or not owned by user');
+    }
+
+    const [newSchedule] = await db
+      .insert(recurringSchedules)
+      .values({ ...schedule, updatedAt: new Date() } as typeof recurringSchedules.$inferInsert)
+      .returning();
+    return newSchedule;
+  }
+
+  async updateRecurringSchedule(id: string, userId: string, updates: Partial<InsertRecurringSchedule>): Promise<RecurringSchedule> {
+    const [updatedSchedule] = await db
+      .update(recurringSchedules)
+      .set({ ...updates, updatedAt: new Date() } as Partial<typeof recurringSchedules.$inferInsert>)
+      .from(recurringTasks)
+      .where(and(
+        eq(recurringSchedules.id, id),
+        eq(recurringSchedules.recurringTaskId, recurringTasks.id),
+        eq(recurringTasks.userId, userId)
+      ))
+      .returning();
+    return updatedSchedule;
+  }
+
+  async deleteRecurringSchedule(id: string, userId: string): Promise<void> {
+    await db
+      .delete(recurringSchedules)
+      .where(and(
+        eq(recurringSchedules.id, id),
+        sql`EXISTS (
+          SELECT 1 FROM ${recurringTasks} 
+          WHERE ${recurringTasks.id} = ${recurringSchedules.recurringTaskId} 
+          AND ${recurringTasks.userId} = ${userId}
+        )`
+      ));
+  }
+
+  // Task skip operations
+  async getTaskSkips(recurringScheduleId: string, userId: string): Promise<TaskSkip[]> {
+    return db.select({
+      id: taskSkips.id,
+      recurringScheduleId: taskSkips.recurringScheduleId,
+      skipDate: taskSkips.skipDate,
+      reason: taskSkips.reason,
+      createdAt: taskSkips.createdAt,
+    })
+      .from(taskSkips)
+      .innerJoin(recurringSchedules, eq(taskSkips.recurringScheduleId, recurringSchedules.id))
+      .innerJoin(recurringTasks, eq(recurringSchedules.recurringTaskId, recurringTasks.id))
+      .where(and(
+        eq(taskSkips.recurringScheduleId, recurringScheduleId),
+        eq(recurringTasks.userId, userId)
+      ));
+  }
+
+  async createTaskSkip(skip: InsertTaskSkip, userId: string): Promise<TaskSkip> {
+    // Verify the recurring schedule belongs to a task owned by the user
+    const scheduleOwnership = await db.select({ id: recurringSchedules.id })
+      .from(recurringSchedules)
+      .innerJoin(recurringTasks, eq(recurringSchedules.recurringTaskId, recurringTasks.id))
+      .where(and(
+        eq(recurringSchedules.id, skip.recurringScheduleId),
+        eq(recurringTasks.userId, userId)
+      ))
+      .limit(1);
+    
+    if (scheduleOwnership.length === 0) {
+      throw new Error('Unauthorized: recurring schedule not found or not owned by user');
+    }
+
+    const [newSkip] = await db
+      .insert(taskSkips)
+      .values(skip)
+      .returning();
+    return newSkip;
+  }
+
+  async deleteTaskSkip(id: string, userId: string): Promise<void> {
+    await db
+      .delete(taskSkips)
+      .where(sql`${taskSkips.id} = ${id} AND EXISTS (
+        SELECT 1 FROM ${recurringSchedules} 
+        JOIN ${recurringTasks} ON ${recurringSchedules.recurringTaskId} = ${recurringTasks.id}
+        WHERE ${recurringSchedules.id} = ${taskSkips.recurringScheduleId} 
+        AND ${recurringTasks.userId} = ${userId}
+      )`);
   }
 
   // Daily schedule operations

@@ -4,7 +4,13 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
 import { extractTasksFromContent, generateDailySchedule, processAICommand, analyzeImage } from "./openai";
-import { insertTaskSchema, insertRecurringTaskSchema, insertDailyScheduleSchema } from "@shared/schema";
+import { 
+  insertTaskSchema, 
+  insertRecurringTaskSchema, 
+  insertRecurringScheduleSchema,
+  insertTaskSkipSchema,
+  insertDailyScheduleSchema 
+} from "@shared/schema";
 import multer from "multer";
 import { z } from "zod";
 
@@ -477,6 +483,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating recurring task:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to create recurring task";
+      res.status(400).json({ message: errorMessage });
+    }
+  });
+
+  app.put('/api/recurring-tasks/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const taskData = insertRecurringTaskSchema.partial().parse(req.body);
+      const task = await storage.updateRecurringTask(req.params.id, req.user.id, taskData);
+      res.json(task);
+    } catch (error) {
+      console.error("Error updating recurring task:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to update recurring task";
+      res.status(400).json({ message: errorMessage });
+    }
+  });
+
+  app.delete('/api/recurring-tasks/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.deleteRecurringTask(req.params.id, req.user.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting recurring task:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete recurring task";
+      res.status(400).json({ message: errorMessage });
+    }
+  });
+
+  // Recurring Schedule Routes
+  app.get('/api/recurring/schedule', isAuthenticated, async (req: any, res) => {
+    try {
+      const recurringTaskId = req.query.recurringTaskId;
+      const schedules = await storage.getRecurringSchedules(req.user.id, recurringTaskId);
+      res.json(schedules);
+    } catch (error) {
+      console.error("Error fetching recurring schedules:", error);
+      res.status(500).json({ message: "Failed to fetch recurring schedules" });
+    }
+  });
+
+  app.post('/api/recurring/schedule', isAuthenticated, async (req: any, res) => {
+    try {
+      const scheduleData = insertRecurringScheduleSchema.parse(req.body);
+      const schedule = await storage.createRecurringSchedule(scheduleData, req.user.id);
+      res.status(201).json(schedule);
+    } catch (error) {
+      console.error("Error creating recurring schedule:", error);
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        res.status(403).json({ message: 'Unauthorized' });
+      } else {
+        const errorMessage = error instanceof Error ? error.message : "Failed to create recurring schedule";
+        res.status(400).json({ message: errorMessage });
+      }
+    }
+  });
+
+  app.put('/api/recurring/schedule/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const scheduleData = insertRecurringScheduleSchema.partial().parse(req.body);
+      const schedule = await storage.updateRecurringSchedule(req.params.id, req.user.id, scheduleData);
+      res.json(schedule);
+    } catch (error) {
+      console.error("Error updating recurring schedule:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to update recurring schedule";
+      res.status(400).json({ message: errorMessage });
+    }
+  });
+
+  app.delete('/api/recurring/schedule/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.deleteRecurringSchedule(req.params.id, req.user.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting recurring schedule:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete recurring schedule";
+      res.status(400).json({ message: errorMessage });
+    }
+  });
+
+  // Task Skip Routes
+  app.get('/api/recurring/skip/:scheduleId', isAuthenticated, async (req: any, res) => {
+    try {
+      const skips = await storage.getTaskSkips(req.params.scheduleId, req.user.id);
+      res.json(skips);
+    } catch (error) {
+      console.error("Error fetching task skips:", error);
+      res.status(500).json({ message: "Failed to fetch task skips" });
+    }
+  });
+
+  app.post('/api/recurring/skip', isAuthenticated, async (req: any, res) => {
+    try {
+      const skipData = insertTaskSkipSchema.parse(req.body);
+      const skip = await storage.createTaskSkip(skipData, req.user.id);
+      res.status(201).json(skip);
+    } catch (error) {
+      console.error("Error creating task skip:", error);
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        res.status(403).json({ message: 'Unauthorized' });
+      } else {
+        const errorMessage = error instanceof Error ? error.message : "Failed to create task skip";
+        res.status(400).json({ message: errorMessage });
+      }
+    }
+  });
+
+  app.delete('/api/recurring/skip/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.deleteTaskSkip(req.params.id, req.user.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting task skip:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete task skip";
       res.status(400).json({ message: errorMessage });
     }
   });

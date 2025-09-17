@@ -267,12 +267,17 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
   })
 });
 
-export const insertRecurringTaskSchema = createInsertSchema(recurringTasks).omit({
-  id: true,
-  userId: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const insertRecurringTaskSchema = createInsertSchema(recurringTasks)
+  .omit({
+    id: true,
+    userId: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    daysOfWeek: z.array(z.string()),
+    tags: z.array(z.string()).optional(),
+  });
 
 export const insertRecurringScheduleSchema = createInsertSchema(recurringSchedules).omit({
   id: true,
