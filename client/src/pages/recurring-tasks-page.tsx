@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -504,7 +504,7 @@ export default function RecurringTasksPage() {
                 })}
             </div>
           ))}
-        </>
+        </React.Fragment>
       ))}
     </div>
   );
