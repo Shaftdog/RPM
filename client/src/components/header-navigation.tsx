@@ -111,8 +111,8 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
     const taskToCreate = {
       ...quickTaskData,
       type: "Task",
-      subcategory: "General",
-      timeHorizon: "This Week",
+      subcategory: "Mental",
+      timeHorizon: "Week",
       why: "Quick add task",
       dependencies: [],
     };
