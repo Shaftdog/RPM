@@ -50,7 +50,7 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "system",
@@ -74,7 +74,22 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
 
 // Local fallback scheduler when OpenAI is unavailable
 function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferences: any): any {
-  const schedule = [];
+  const schedule: Array<{
+    timeBlock: string;
+    start: string;
+    end: string;
+    quartiles: Array<{
+      task: {
+        id: string;
+        name: string;
+        priority: string;
+        estimatedTime: string;
+      };
+      start: string;
+      end: string;
+      allocatedTime: string;
+    }>;
+  }> = [];
   
   // Match the exact schema structure that OpenAI returns
   const timeBlocks = [
@@ -91,7 +106,17 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
   const availableTasks = [...tasks];
   
   timeBlocks.forEach((block) => {
-    let quartiles = [];
+    let quartiles: Array<{
+      task: {
+        id: string;
+        name: string;
+        priority: string;
+        estimatedTime: string;
+      };
+      start: string;
+      end: string;
+      allocatedTime: string;
+    }> = [];
     
     // Assign tasks based on block type and priority
     let targetTask = null;
@@ -195,7 +220,7 @@ export async function generateDailySchedule(
     const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "system",
@@ -258,7 +283,7 @@ export async function processAICommand(
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "system",
@@ -286,7 +311,7 @@ export async function processAICommand(
 export async function analyzeImage(base64Image: string): Promise<ExtractedTask[]> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "user",
@@ -333,5 +358,144 @@ export async function analyzeImage(base64Image: string): Promise<ExtractedTask[]
   } catch (error) {
     console.error("Error analyzing image:", error);
     throw new Error("Failed to analyze image for tasks");
+  }
+}
+
+export interface ExtractedRecurringTask {
+  taskName: string;
+  taskType: "Milestone" | "Sub-Milestone" | "Task" | "Subtask";
+  timeBlock: string;
+  daysOfWeek: string[];
+  category: "Personal" | "Business";
+  subcategory: string;
+  durationMinutes: number;
+  energyImpact: number;
+  priority: "High" | "Medium" | "Low";
+  description?: string;
+  tags?: string[];
+}
+
+export async function extractRecurringTasksFromContent(content: string): Promise<ExtractedRecurringTask[]> {
+  try {
+    const prompt = `
+    Analyze this content and extract recurring tasks, habits, routines, and regular activities. For each recurring task, return a JSON object with these exact field names:
+    
+    1. taskName: Clear, actionable name for the recurring task (string)
+    2. taskType: One of: "Milestone", "Sub-Milestone", "Task", "Subtask"
+       - Milestone: Long-term recurring outcome (quarterly/yearly reviews)
+       - Sub-Milestone: Regular significant activities (weekly planning, monthly reviews)
+       - Task: Regular concrete actions (daily workout, weekly meetings)
+       - Subtask: Small recurring actions (daily standup, morning routine)
+    3. category: "Personal" or "Business"
+    4. subcategory: 
+       - For Personal: "Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure"
+       - For Business: "Marketing", "Sales", "Operations", "Products", "Production"
+    5. timeBlock: Suggested time block from: "PHYSICAL MENTAL (7-9AM)", "CHIEF PROJECT (9-11AM)", "HOUR OF POWER (11-12PM)", "PRODUCTION WORK (12-2PM)", "COMPANY BLOCK (2-4PM)", "BUSINESS AUTOMATION (4-6PM)", "ENVIRONMENTAL (6-8PM)", "FLEXIBLE BLOCK (8-10PM)"
+    6. daysOfWeek: Array of days like ["monday", "tuesday", "wednesday", "thursday", "friday"] (lowercase)
+    7. priority: "High", "Medium", or "Low"
+    8. durationMinutes: Number of minutes the task typically takes
+    9. energyImpact: Number from -500 to +500 (negative = draining, positive = energizing)
+    10. description: Brief description of what the task involves
+    11. tags: Array of relevant tags/keywords
+
+    Return as a JSON object with an array of tasks under the key "tasks".
+    Focus on identifying patterns, routines, and recurring activities rather than one-time tasks.
+    
+    Content to analyze:
+    ${content}
+    `;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert at identifying recurring patterns and habits from content. Extract recurring tasks, routines, and regular activities that someone would want to schedule repeatedly."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    return result.tasks || [];
+  } catch (error) {
+    console.error("Error extracting recurring tasks:", error);
+    throw new Error("Failed to extract recurring tasks from content");
+  }
+}
+
+export async function processRecurringTaskChatCommand(
+  message: string,
+  context: {
+    extractedTasks: any[];
+    uploadedFiles: Array<{ name: string; type: string; size: number }>;
+    recurringTasks: any[];
+  }
+): Promise<{ response: string; modifiedTasks?: any[] }> {
+  try {
+    const prompt = `
+    Process this chat command for managing recurring tasks. The user wants to modify, organize, or get information about their recurring tasks.
+    
+    Command: "${message}"
+    
+    Context:
+    - Currently extracted tasks: ${context.extractedTasks.length} tasks
+    - Uploaded files: ${context.uploadedFiles.map(f => f.name).join(', ')}
+    - Existing recurring tasks: ${context.recurringTasks.length} tasks
+    
+    Available time blocks: "PHYSICAL MENTAL (7-9AM)", "CHIEF PROJECT (9-11AM)", "HOUR OF POWER (11-12PM)", "PRODUCTION WORK (12-2PM)", "COMPANY BLOCK (2-4PM)", "BUSINESS AUTOMATION (4-6PM)", "ENVIRONMENTAL (6-8PM)", "FLEXIBLE BLOCK (8-10PM)"
+    
+    Available categories: "Personal", "Business"
+    Available subcategories: "Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure", "Marketing", "Sales", "Operations", "Products", "Production"
+    Available priorities: "High", "Medium", "Low"
+    Available task types: "Milestone", "Sub-Milestone", "Task", "Subtask"
+    
+    Current extracted tasks:
+    ${JSON.stringify(context.extractedTasks.slice(0, 5), null, 2)}
+    
+    Examples of commands you can process:
+    - "Change all business tasks to morning blocks" - Update timeBlock for business category
+    - "Set energy for all meetings to -150" - Update energyImpact for tasks with "meeting" in name
+    - "Make everything weekdays only" - Update daysOfWeek to ["monday", "tuesday", "wednesday", "thursday", "friday"]
+    - "Add 15 minutes to all task durations" - Increase durationMinutes by 15
+    - "Change fitness tasks to Physical category" - Update category/subcategory
+    - "Set all personal tasks to high priority" - Update priority field
+    - "Move morning routines to PHYSICAL MENTAL block" - Update timeBlock
+    
+    Respond with a JSON object containing:
+    - response: A helpful explanation of what you're doing (string)
+    - modifiedTasks: Array of updated extracted tasks with the changes applied (optional)
+    
+    If modifying tasks, return ALL extracted tasks in modifiedTasks array (even unmodified ones) with the changes applied to the relevant tasks.
+    Make the response conversational and helpful, explaining what changes were made.
+    `;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "system",
+          content: "You are an AI assistant specialized in managing recurring tasks and schedules. Help users organize and modify their recurring tasks through natural language commands."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    return {
+      response: result.response || "I understand your request, but I need more specific information to help you modify the tasks.",
+      modifiedTasks: result.modifiedTasks
+    };
+  } catch (error) {
+    console.error("Error processing recurring task chat command:", error);
+    throw new Error("Failed to process chat command");
   }
 }

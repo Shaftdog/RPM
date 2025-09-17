@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
-import { extractTasksFromContent, generateDailySchedule, processAICommand, analyzeImage } from "./openai";
+import { extractTasksFromContent, generateDailySchedule, processAICommand, analyzeImage, extractRecurringTasksFromContent, processRecurringTaskChatCommand } from "./openai";
 import { 
   insertTaskSchema, 
   insertRecurringTaskSchema, 
@@ -13,11 +13,46 @@ import {
 } from "@shared/schema";
 import multer from "multer";
 import { z } from "zod";
+import mammoth from "mammoth";
+
+// PDF text extraction using pdfjs-dist
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  try {
+    const pdfjs = await import('pdfjs-dist');
+    
+    const loadingTask = pdfjs.getDocument({
+      data: buffer,
+      worker: undefined, // Avoid worker file resolution issues
+    });
+    
+    const pdf = await loadingTask.promise;
+    let text = '';
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ');
+      text += pageText + '\n';
+    }
+    
+    return text.trim();
+  } catch (error) {
+    throw new Error(`PDF parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
 
 // Configure multer for file uploads
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
+
+// Configure multer for multiple file uploads
+const uploadMultiple = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit per file
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -163,7 +198,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tasks = await storage.getTasks(req.user.id);
       
       // Organize tasks by time horizon and category
-      const matrix = {};
+      const matrix: Record<string, Record<string, any[]>> = {};
       const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Quarter', 'Week', 'Today', 'BACKLOG'];
       const categories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure', 'Marketing', 'Sales', 'Operations', 'Products', 'Production'];
       
@@ -272,7 +307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     // Partial match - check if any task name contains the search term
-    for (const [name, id] of nameToId.entries()) {
+    for (const [name, id] of Array.from(nameToId.entries())) {
       if (name.includes(cleanName) || cleanName.includes(name)) {
         return id;
       }
@@ -463,6 +498,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Recurring Tasks Extract Route
+  app.post('/api/recurring-tasks/extract', isAuthenticated, uploadMultiple.array('files'), async (req: any, res) => {
+    try {
+      let content = '';
+      let tasks: any[] = [];
+      
+      if (req.files && req.files.length > 0) {
+        // Handle multiple file uploads
+        for (const file of req.files) {
+          const fileBuffer = file.buffer;
+          const mimeType = file.mimetype;
+          
+          if (mimeType.startsWith('image/')) {
+            const base64Image = fileBuffer.toString('base64');
+            const imageTasks = await analyzeImage(base64Image);
+            // Convert regular tasks to recurring tasks format
+            const recurringTasks = imageTasks.map(task => ({
+              taskName: task.name,
+              taskType: task.type,
+              timeBlock: 'FLEXIBLE BLOCK (8-10PM)', // Default time block
+              daysOfWeek: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+              category: task.category,
+              subcategory: task.subcategory,
+              durationMinutes: Math.round((task.estimatedTime || 1) * 60),
+              energyImpact: 0,
+              priority: task.priority,
+              description: task.description || task.why || '',
+              tags: []
+            }));
+            tasks.push(...recurringTasks);
+          } else if (mimeType === 'text/plain') {
+            content += fileBuffer.toString('utf-8') + '\n';
+          } else if (mimeType === 'application/pdf') {
+            try {
+              const pdfText = await extractPdfText(fileBuffer);
+              if (!pdfText || pdfText.trim().length === 0) {
+                return res.status(400).json({ message: 'PDF appears to contain no extractable text. Please ensure it is a text-based PDF, not a scanned image.' });
+              }
+              content += pdfText + '\n';
+            } catch (pdfError) {
+              console.error('Error parsing PDF:', pdfError);
+              return res.status(400).json({ message: 'Failed to parse PDF file. Please ensure it contains extractable text.' });
+            }
+          } else if (mimeType.includes('officedocument.wordprocessingml') || mimeType.includes('msword')) {
+            try {
+              const docData = await mammoth.extractRawText({ buffer: fileBuffer });
+              content += docData.value + '\n';
+            } catch (docError) {
+              console.error('Error parsing DOC file:', docError);
+              return res.status(400).json({ message: 'Failed to parse DOC file. Please ensure it is a valid Word document.' });
+            }
+          } else {
+            return res.status(400).json({ message: `Unsupported file type: ${mimeType}` });
+          }
+        }
+      } else {
+        content = req.body.content || '';
+      }
+
+      if (content.trim()) {
+        const contentTasks = await extractRecurringTasksFromContent(content);
+        tasks.push(...contentTasks);
+      }
+
+      if (tasks.length === 0) {
+        return res.status(400).json({ message: 'No content provided for extraction or no tasks found' });
+      }
+
+      res.json({ tasks });
+    } catch (error) {
+      console.error("Error extracting recurring tasks:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to extract recurring tasks";
+      res.status(500).json({ message: errorMessage });
+    }
+  });
+
+  // Recurring Tasks Chat Route
+  app.post('/api/recurring-tasks/chat', isAuthenticated, async (req: any, res) => {
+    try {
+      const { message, context } = req.body;
+      
+      if (!message || !message.trim()) {
+        return res.status(400).json({ message: 'Message is required' });
+      }
+
+      const chatContext = {
+        extractedTasks: context?.extractedTasks || [],
+        uploadedFiles: context?.uploadedFiles || [],
+        recurringTasks: context?.recurringTasks || []
+      };
+      
+      const aiResponse = await processRecurringTaskChatCommand(message.trim(), chatContext);
+      res.json(aiResponse);
+    } catch (error) {
+      console.error("Error processing recurring task chat:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to process chat command";
+      res.status(500).json({ message: errorMessage });
+    }
+  });
+
   // Recurring Tasks Routes
   app.get('/api/recurring-tasks', isAuthenticated, async (req: any, res) => {
     try {
@@ -599,6 +734,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+
   const httpServer = createServer(app);
   
   // WebSocket Setup
@@ -654,10 +790,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId = sessionData.passport.user;
         
         // Add connection to user's connection set
-        if (!userConnections.has(userId)) {
-          userConnections.set(userId, new Set());
+        if (userId) {
+          if (!userConnections.has(userId)) {
+            userConnections.set(userId, new Set());
+          }
+          userConnections.get(userId)!.add(ws);
         }
-        userConnections.get(userId)!.add(ws);
         
         ws.send(JSON.stringify({ type: 'auth_success', userId }));
         

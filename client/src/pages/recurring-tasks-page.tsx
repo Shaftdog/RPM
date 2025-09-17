@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -14,7 +14,18 @@ import {
   MoreVertical,
   GripVertical,
   Repeat,
-  CalendarDays
+  CalendarDays,
+  Upload,
+  FileText,
+  Image,
+  MessageSquare,
+  Send,
+  Bot,
+  User,
+  CheckCircle,
+  Download,
+  X,
+  Loader2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -53,10 +64,45 @@ const TIME_BLOCKS = [
   "WIND DOWN (10PM-12AM)"
 ];
 
+// AI Assistant types
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+}
+
+interface ExtractedRecurringTask {
+  id: string;
+  taskName: string;
+  taskType: "Milestone" | "Sub-Milestone" | "Task" | "Subtask";
+  timeBlock: string;
+  daysOfWeek: string[];
+  category: "Personal" | "Business";
+  subcategory: string;
+  durationMinutes: number;
+  energyImpact: number;
+  priority: "High" | "Medium" | "Low";
+  description?: string;
+  tags?: string[];
+  selected: boolean;
+  source: 'file' | 'chat';
+}
+
 export default function RecurringTasksPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<"weekly" | "monthly" | "quarterly" | "yearly">("weekly");
   const [draggedTask, setDraggedTask] = useState<RecurringTask | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  
+  // AI Assistant state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [extractedTasks, setExtractedTasks] = useState<ExtractedRecurringTask[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -138,6 +184,190 @@ export default function RecurringTasksPage() {
 
   const onSubmit = (data: InsertRecurringTask) => {
     createTaskMutation.mutate(data);
+  };
+
+  // AI Assistant functions
+  const handleFileUpload = useCallback(async (files: File[]) => {
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      files.forEach((file, index) => {
+        formData.append(`file${index}`, file);
+      });
+
+      const response = await fetch('/api/recurring-tasks/extract', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process files');
+      }
+
+      const result = await response.json();
+      const newExtractedTasks: ExtractedRecurringTask[] = result.tasks.map((task: any, index: number) => ({
+        id: `extracted-${Date.now()}-${index}`,
+        taskName: task.name || task.taskName || '',
+        taskType: task.type || task.taskType || 'Task',
+        timeBlock: task.timeBlock || 'FLEXIBLE BLOCK (8-10PM)',
+        daysOfWeek: task.daysOfWeek || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+        category: task.category || 'Personal',
+        subcategory: task.subcategory || 'Physical',
+        durationMinutes: task.durationMinutes || Math.round((task.estimatedTime || 1) * 60),
+        energyImpact: task.energyImpact || 0,
+        priority: task.priority || 'Medium',
+        description: task.description || task.why || '',
+        tags: task.tags || [],
+        selected: true,
+        source: 'file' as const,
+      }));
+
+      setExtractedTasks(prev => [...prev, ...newExtractedTasks]);
+      setUploadedFiles(prev => [...prev, ...files]);
+
+      // Add system message about uploaded files
+      const systemMessage: ChatMessage = {
+        id: `system-${Date.now()}`,
+        role: 'assistant',
+        content: `Successfully processed ${files.length} file(s) and extracted ${newExtractedTasks.length} recurring tasks. You can now modify them using chat commands or apply them to your schedule.`,
+        timestamp: new Date(),
+      };
+      setChatMessages(prev => [...prev, systemMessage]);
+
+      toast({
+        title: "Files processed successfully",
+        description: `Extracted ${newExtractedTasks.length} recurring tasks`,
+      });
+    } catch (error: any) {
+      console.error('File upload error:', error);
+      toast({
+        title: "Error processing files",
+        description: error.message || "Failed to process uploaded files",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [toast]);
+
+  const handleChatSubmit = async (message: string) => {
+    if (!message.trim() || isChatLoading) return;
+
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: message.trim(),
+      timestamp: new Date(),
+    };
+
+    setChatMessages(prev => [...prev, userMessage]);
+    setChatInput("");
+    setIsChatLoading(true);
+
+    try {
+      const response = await fetch('/api/recurring-tasks/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: message.trim(),
+          context: {
+            extractedTasks,
+            uploadedFiles: uploadedFiles.map(f => ({ name: f.name, type: f.type, size: f.size })),
+            recurringTasks: recurringTasks.slice(0, 10), // Send limited context
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process chat message');
+      }
+
+      const result = await response.json();
+      
+      // Add assistant response
+      const assistantMessage: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: result.response || "I understand your request.",
+        timestamp: new Date(),
+      };
+      setChatMessages(prev => [...prev, assistantMessage]);
+
+      // Apply any task modifications from the AI response
+      if (result.modifiedTasks) {
+        setExtractedTasks(result.modifiedTasks.map((task: any) => ({
+          ...task,
+          id: task.id || `modified-${Date.now()}-${Math.random()}`,
+          selected: task.selected !== undefined ? task.selected : true,
+        })));
+      }
+
+    } catch (error: any) {
+      console.error('Chat error:', error);
+      const errorMessage: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: "Sorry, I encountered an error processing your request. Please try again.",
+        timestamp: new Date(),
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const handleApplyTasks = async () => {
+    const selectedTasks = extractedTasks.filter(task => task.selected);
+    if (selectedTasks.length === 0) {
+      toast({
+        title: "No tasks selected",
+        description: "Please select at least one task to apply",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Convert extracted tasks to recurring task format and create them
+      for (const task of selectedTasks) {
+        const taskData: InsertRecurringTask = {
+          taskName: task.taskName,
+          taskType: task.taskType,
+          timeBlock: task.timeBlock,
+          daysOfWeek: task.daysOfWeek,
+          category: task.category,
+          subcategory: task.subcategory as any,
+          durationMinutes: task.durationMinutes,
+          energyImpact: task.energyImpact,
+          priority: task.priority,
+          description: task.description || '',
+          tags: task.tags || [],
+          isActive: true,
+        };
+        
+        await apiRequest("POST", "/api/recurring-tasks", taskData);
+      }
+
+      // Refresh recurring tasks
+      queryClient.invalidateQueries({ queryKey: ['/api/recurring-tasks'] });
+      
+      // Clear applied tasks
+      setExtractedTasks(prev => prev.filter(task => !task.selected));
+      
+      toast({
+        title: "Tasks applied successfully",
+        description: `Added ${selectedTasks.length} recurring tasks to your schedule`,
+      });
+    } catch (error: any) {
+      console.error('Apply tasks error:', error);
+      toast({
+        title: "Error applying tasks",
+        description: error.message || "Failed to apply selected tasks",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDragStart = (task: RecurringTask) => {
@@ -391,6 +621,327 @@ export default function RecurringTasksPage() {
       </CardContent>
     </Card>
   );
+
+  // AI Recurring Assistant Component
+  const AIRecurringAssistant = () => {
+    const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDragEnter = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const files = Array.from(e.dataTransfer.files);
+      const validFiles = files.filter(file => {
+        const validTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png', 'image/jpg'];
+        return validTypes.includes(file.type);
+      });
+      
+      if (validFiles.length > 0) {
+        handleFileUpload(validFiles);
+      } else {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload PDF, TXT, DOC, JPG, or PNG files only",
+          variant: "destructive",
+        });
+      }
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length > 0) {
+        handleFileUpload(files);
+      }
+    };
+
+    const formatTime = (date: Date) => {
+      return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    };
+
+    const toggleTaskSelection = (taskId: string) => {
+      setExtractedTasks(prev => 
+        prev.map(task => 
+          task.id === taskId ? { ...task, selected: !task.selected } : task
+        )
+      );
+    };
+
+    const selectedTasksCount = extractedTasks.filter(task => task.selected).length;
+
+    return (
+      <Card className="h-full">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Bot className="h-5 w-5 text-primary" />
+            AI Recurring Assistant
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 space-y-6">
+          {/* File Upload Area */}
+          <div className="space-y-3">
+            <h3 className="font-medium flex items-center gap-2">
+              <Upload className="h-4 w-4" />
+              Upload Files
+            </h3>
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                isUploading 
+                  ? 'border-primary bg-primary/5' 
+                  : 'border-muted-foreground/25 hover:border-primary/50'
+              }`}
+              onDragOver={handleDragOver}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              role="button"
+              data-testid="upload-area"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.txt,.doc,.docx,.jpg,.jpeg,.png"
+                className="hidden"
+                onChange={handleFileSelect}
+                data-testid="file-input"
+              />
+              {isUploading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">Processing files...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <FileText className="h-6 w-6" />
+                    <Image className="h-6 w-6" />
+                  </div>
+                  <p className="text-sm font-medium">Drop files or click to upload</p>
+                  <p className="text-xs text-muted-foreground">
+                    PDF, TXT, DOC, JPG, PNG supported
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            {/* Uploaded Files */}
+            {uploadedFiles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Uploaded Files:</p>
+                {uploadedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center gap-2 text-xs bg-muted p-2 rounded">
+                    <FileText className="h-3 w-3" />
+                    <span className="flex-1 truncate">{file.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== index))}
+                      data-testid={`remove-file-${index}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Chat Interface */}
+          <div className="space-y-3">
+            <h3 className="font-medium flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Chat Commands
+            </h3>
+            
+            {/* Chat Messages */}
+            <ScrollArea className="h-48 border rounded-lg">
+              <div className="p-3 space-y-3">
+                {chatMessages.length === 0 ? (
+                  <div className="text-center text-muted-foreground">
+                    <p className="text-sm">Upload files or ask me to help with recurring tasks</p>
+                    <p className="text-xs mt-1">Try: "Change all business tasks to morning blocks"</p>
+                  </div>
+                ) : (
+                  chatMessages.map((message) => (
+                    <div key={message.id} className={`flex gap-2 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        message.role === 'user' ? 'bg-primary' : 'bg-muted'
+                      }`}>
+                        {message.role === 'user' ? (
+                          <User className="h-3 w-3 text-primary-foreground" />
+                        ) : (
+                          <Bot className="h-3 w-3 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className={`max-w-[80%] ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
+                        <div className={`rounded-lg p-2 text-xs ${
+                          message.role === 'user' 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {message.content}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {formatTime(message.timestamp)}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+
+            {/* Chat Input */}
+            <div className="flex gap-2">
+              <Input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Ask me to modify tasks..."
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleChatSubmit(chatInput);
+                  }
+                }}
+                disabled={isChatLoading}
+                data-testid="chat-input"
+              />
+              <Button
+                size="sm"
+                onClick={() => handleChatSubmit(chatInput)}
+                disabled={!chatInput.trim() || isChatLoading}
+                data-testid="chat-send"
+              >
+                {isChatLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Extracted Tasks Preview */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Extracted Tasks ({extractedTasks.length})
+              </h3>
+              {selectedTasksCount > 0 && (
+                <Button
+                  size="sm"
+                  onClick={handleApplyTasks}
+                  className="text-xs"
+                  data-testid="apply-tasks"
+                >
+                  Apply {selectedTasksCount} Tasks
+                </Button>
+              )}
+            </div>
+            
+            <ScrollArea className="h-64">
+              <div className="space-y-2 pr-3">
+                {extractedTasks.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    <Download className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No tasks extracted yet</p>
+                    <p className="text-xs">Upload files to get started</p>
+                  </div>
+                ) : (
+                  extractedTasks.map((task) => (
+                    <Card key={task.id} className={`p-3 border-l-4 ${
+                      task.source === 'file' ? 'border-l-blue-500' : 'border-l-green-500'
+                    } ${!task.selected ? 'opacity-60' : ''}`}>
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <Checkbox
+                            checked={task.selected}
+                            onCheckedChange={() => toggleTaskSelection(task.id)}
+                            className="mt-0.5"
+                            data-testid={`task-checkbox-${task.id}`}
+                          />
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm">{task.taskName}</span>
+                              <Badge variant="outline" className="text-xs">
+                                {task.taskType}
+                              </Badge>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Badge variant="secondary" className="text-xs">
+                                {task.category}
+                              </Badge>
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {Math.round(task.durationMinutes/60*10)/10}h
+                              </span>
+                              <span 
+                                className={`flex items-center gap-1 font-medium ${
+                                  task.energyImpact >= 0 ? 'text-green-600' : 'text-red-600'
+                                }`}
+                              >
+                                {task.energyImpact >= 0 ? '+' : ''}{task.energyImpact}
+                              </span>
+                            </div>
+                            
+                            <div className="text-xs text-muted-foreground">
+                              {task.timeBlock} • {task.daysOfWeek.join(', ')}
+                            </div>
+                            
+                            {task.description && (
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {task.description}
+                              </p>
+                            )}
+                            
+                            {task.tags && task.tags.length > 0 && (
+                              <div className="flex gap-1 flex-wrap">
+                                {task.tags.map((tag, index) => (
+                                  <Badge key={index} variant="secondary" className="text-xs">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   if (tasksLoading || schedulesLoading) {
     return (
@@ -710,7 +1261,12 @@ export default function RecurringTasksPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-6">
+      <div className="grid grid-cols-6 gap-6">
+        {/* Task Library Sidebar */}
+        <div className="col-span-1">
+          <TaskLibrarySidebar />
+        </div>
+        
         {/* Main content area */}
         <div className="col-span-3 space-y-6">
           {/* Weekly Matrix */}
@@ -740,9 +1296,9 @@ export default function RecurringTasksPage() {
           </Card>
         </div>
 
-        {/* Task Library Sidebar */}
-        <div className="col-span-1">
-          <TaskLibrarySidebar />
+        {/* AI Recurring Assistant - Right Panel */}
+        <div className="col-span-2">
+          <AIRecurringAssistant />
         </div>
       </div>
     </div>
