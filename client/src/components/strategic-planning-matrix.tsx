@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X } from "lucide-react";
+import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle } from "lucide-react";
 
 interface Task {
   id: string;
@@ -35,6 +35,7 @@ interface Task {
   estimatedTime: string;
   progress: number;
   status: string;
+  why?: string;
 }
 
 export default function StrategicPlanningMatrix() {
@@ -568,6 +569,19 @@ export default function StrategicPlanningMatrix() {
                 </div>
               </div>
 
+              {/* Why */}
+              {selectedTask.why && (
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    <Label className="text-sm font-medium">Why</Label>
+                  </div>
+                  <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+                    {selectedTask.why}
+                  </div>
+                </div>
+              )}
+
               {/* Progress */}
               {selectedTask.progress > 0 && (
                 <div className="space-y-2">
@@ -762,6 +776,18 @@ export default function StrategicPlanningMatrix() {
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Why */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Why (Rationale)</Label>
+                <Textarea
+                  value={editFormData.why || ''}
+                  onChange={(e) => updateEditField('why', e.target.value)}
+                  placeholder="Explain the purpose or reason behind this task..."
+                  rows={3}
+                  data-testid="textarea-edit-why"
+                />
               </div>
             </div>
           )}
