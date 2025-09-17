@@ -397,20 +397,41 @@ export default function RecurringTasksPage() {
     }
   };
 
-  const handleDragStart = (task: RecurringTask) => {
+  const handleDragStart = (task: RecurringTask, e: React.DragEvent) => {
     setDraggedTask(task);
+    // Store task data in dataTransfer to work across overlay boundaries
+    e.dataTransfer.setData('application/json', JSON.stringify(task));
+    e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragEnd = () => {
     setDraggedTask(null);
   };
 
-  const handleDrop = (dayIndex: number, timeBlock: string) => {
-    if (!draggedTask) return;
+  const handleDrop = (dayIndex: number, timeBlock: string, e: React.DragEvent) => {
+    e.preventDefault();
+    
+    let taskToSchedule = draggedTask;
+    
+    // If state-based draggedTask is not available (cross-overlay scenario),
+    // try to get task data from dataTransfer
+    if (!taskToSchedule) {
+      try {
+        const taskData = e.dataTransfer.getData('application/json');
+        if (taskData) {
+          taskToSchedule = JSON.parse(taskData);
+        }
+      } catch (error) {
+        console.error('Failed to parse dragged task data:', error);
+        return;
+      }
+    }
+    
+    if (!taskToSchedule) return;
     
     // Create a weekly recurring schedule
     const scheduleData = {
-      recurringTaskId: draggedTask.id,
+      recurringTaskId: taskToSchedule.id,
       scheduleType: "weekly" as const,
       dayOfWeek: dayIndex,
       timeBlock: timeBlock,
@@ -423,9 +444,11 @@ export default function RecurringTasksPage() {
 
   const TaskCard = ({ task }: { task: RecurringTask }) => (
     <Card 
-      className="mb-2 cursor-grab active:cursor-grabbing border-l-4 border-l-primary"
+      className={`mb-2 cursor-grab active:cursor-grabbing border-l-4 border-l-primary transition-opacity ${
+        draggedTask?.id === task.id ? 'opacity-50' : 'opacity-100'
+      }`}
       draggable
-      onDragStart={() => handleDragStart(task)}
+      onDragStart={(e) => handleDragStart(task, e)}
       onDragEnd={handleDragEnd}
       data-testid={`task-card-${task.id}`}
     >
@@ -509,10 +532,13 @@ export default function RecurringTasksPage() {
           cells.push(
             <div
               key={`${timeBlock}-${day}`}
-              className="min-h-20 p-2 border border-dashed border-muted-foreground/20 rounded hover:bg-muted/50 transition-colors"
+              className={`min-h-20 p-2 border border-dashed rounded transition-colors ${
+                draggedTask 
+                  ? 'border-primary/50 bg-primary/5 hover:bg-primary/10' 
+                  : 'border-muted-foreground/20 hover:bg-muted/50'
+              }`}
               onDrop={(e) => {
-                e.preventDefault();
-                handleDrop(dayIndex, timeBlock);
+                handleDrop(dayIndex, timeBlock, e);
               }}
               onDragOver={(e) => e.preventDefault()}
               data-testid={`drop-zone-${dayIndex}-${timeBlock}`}
@@ -1346,7 +1372,7 @@ export default function RecurringTasksPage() {
             Task Library
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-80 sm:w-96">
+        <SheetContent side="left" className="w-80 sm:w-96" style={{ pointerEvents: 'auto' }}>
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Library className="h-5 w-5" />
