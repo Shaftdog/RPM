@@ -491,12 +491,19 @@ export default function RecurringTasksPage() {
       ))}
 
       {/* Time block rows */}
-      {TIME_BLOCKS.map((timeBlock) => (
-        <React.Fragment key={timeBlock}>
-          <div className="text-xs font-medium text-muted-foreground p-2 border-r">
+      {TIME_BLOCKS.map((timeBlock) => {
+        const cells = [];
+        
+        // Add time block label
+        cells.push(
+          <div key={`${timeBlock}-label`} className="text-xs font-medium text-muted-foreground p-2 border-r">
             {timeBlock}
           </div>
-          {DAYS_OF_WEEK.map((day, dayIndex) => (
+        );
+        
+        // Add day cells
+        DAYS_OF_WEEK.forEach((day, dayIndex) => {
+          cells.push(
             <div
               key={`${timeBlock}-${day}`}
               className="min-h-20 p-2 border border-dashed border-muted-foreground/20 rounded hover:bg-muted/50 transition-colors"
@@ -525,9 +532,11 @@ export default function RecurringTasksPage() {
                   );
                 })}
             </div>
-          ))}
-        </React.Fragment>
-      ))}
+          );
+        });
+        
+        return cells;
+      })}
     </div>
   );
 
