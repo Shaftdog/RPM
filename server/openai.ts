@@ -232,7 +232,7 @@ export async function generateDailySchedule(
         }
       ],
       response_format: { type: "json_object" },
-      max_tokens: 2000,
+      max_completion_tokens: 2000,
     }, {
       signal: controller.signal
     });
@@ -350,7 +350,7 @@ export async function analyzeImage(base64Image: string): Promise<ExtractedTask[]
         },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 1000,
+      max_completion_tokens: 1000,
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
