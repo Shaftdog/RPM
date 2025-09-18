@@ -2064,25 +2064,39 @@ export default function RecurringTasksPage() {
                     />
                   </div>
 
-                  <div className="flex justify-end space-x-2">
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={() => setIsCreateDialogOpen(false)}
-                      data-testid="button-cancel"
-                    >
-                      Cancel
-                    </Button>
-                    <Button 
-                      type="submit" 
-                      disabled={createTaskMutation.isPending}
-                      data-testid="button-submit"
-                    >
-                      {editingTask 
-                        ? (updateTaskMutation.isPending ? "Updating..." : "Update Task")
-                        : (createTaskMutation.isPending ? "Creating..." : "Create Task")
-                      }
-                    </Button>
+                  <div className="flex justify-between">
+                    <div>
+                      {editingTask && (
+                        <Button 
+                          type="button" 
+                          variant="destructive" 
+                          onClick={() => handleDeleteTask(editingTask)}
+                          data-testid="button-delete-task"
+                        >
+                          Delete Task
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={() => setIsCreateDialogOpen(false)}
+                        data-testid="button-cancel"
+                      >
+                        Cancel
+                      </Button>
+                      <Button 
+                        type="submit" 
+                        disabled={createTaskMutation.isPending}
+                        data-testid="button-submit"
+                      >
+                        {editingTask 
+                          ? (updateTaskMutation.isPending ? "Updating..." : "Update Task")
+                          : (createTaskMutation.isPending ? "Creating..." : "Create Task")
+                        }
+                      </Button>
+                    </div>
                   </div>
                 </form>
               </Form>
