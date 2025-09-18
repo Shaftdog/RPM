@@ -402,6 +402,16 @@ export default function RecurringTasksPage() {
     // Store task data in dataTransfer to work across overlay boundaries
     e.dataTransfer.setData('application/json', JSON.stringify(task));
     e.dataTransfer.effectAllowed = 'move';
+    
+    // Auto-close the Task Library overlay when dragging starts
+    // This allows the drag to reach the Weekly Matrix drop zones
+    if (isTaskLibraryOpen) {
+      setIsTaskLibraryOpen(false);
+      // Add a small delay to ensure the drag continues after overlay closes
+      setTimeout(() => {
+        // The drag is already in progress, no action needed
+      }, 10);
+    }
   };
 
   const handleDragEnd = () => {
@@ -1378,6 +1388,9 @@ export default function RecurringTasksPage() {
               <Library className="h-5 w-5" />
               Task Library
             </SheetTitle>
+            <p className="text-xs text-muted-foreground mt-2">
+              Drag tasks to the Weekly Matrix to schedule them
+            </p>
           </SheetHeader>
           <div className="mt-6">
             <TaskLibrarySidebar />
