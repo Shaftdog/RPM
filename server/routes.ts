@@ -515,14 +515,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const file of req.files) {
           const fileBuffer = file.buffer;
           const mimeType = file.mimetype;
-          console.log(`Processing file: ${file.originalname}, type: ${mimeType}, size: ${fileBuffer.length}`);
           
           if (mimeType.startsWith('image/')) {
-            console.log('Processing image file...');
             const base64Image = fileBuffer.toString('base64');
-            console.log('Image converted to base64, length:', base64Image.length);
             const imageTasks = await analyzeImage(base64Image, mimeType);
-            console.log('OpenAI returned tasks:', imageTasks.length, imageTasks);
             // Convert regular tasks to recurring tasks format
             const recurringTasks = imageTasks.map(task => ({
               taskName: task.name,
@@ -537,12 +533,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               description: task.description || task.why || '',
               tags: []
             }));
-            console.log('Mapped to recurring tasks:', recurringTasks.length);
             tasks.push(...recurringTasks);
           } else if (mimeType === 'text/plain') {
-            console.log('Processing text file...');
             const textContent = fileBuffer.toString('utf-8');
-            console.log('Text content length:', textContent.length, 'Preview:', textContent.substring(0, 100));
             content += textContent + '\n';
           } else if (mimeType === 'application/pdf') {
             try {
@@ -578,13 +571,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tasks.push(...contentTasks);
       }
 
-      console.log('Total tasks extracted:', tasks.length);
       if (tasks.length === 0) {
-        console.log('No tasks found after processing all files and content');
         return res.status(400).json({ message: 'No content provided for extraction or no tasks found' });
       }
 
-      console.log('Successfully returning', tasks.length, 'tasks');
       res.json({ tasks });
     } catch (error) {
       console.error("Error extracting recurring tasks:", error);

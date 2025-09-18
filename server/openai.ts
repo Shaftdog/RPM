@@ -356,10 +356,42 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
       max_completion_tokens: 1000,
     });
 
-    console.log('OpenAI raw response:', response.choices[0].message.content);
     const result = JSON.parse(response.choices[0].message.content || "{}");
-    console.log('Parsed result:', result);
-    return result.tasks || [];
+    
+    // Fix subcategories that don't match our enum values
+    const validPersonalSubcategories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure'];
+    const validBusinessSubcategories = ['Marketing', 'Sales', 'Operations', 'Products', 'Production'];
+    
+    const fixedTasks = (result.tasks || []).map((task: any) => {
+      let subcategory = task.subcategory;
+      
+      if (task.category === 'Personal') {
+        if (!validPersonalSubcategories.includes(subcategory)) {
+          // Map common mismatches
+          if (subcategory === 'Recovery' || subcategory === 'Health') {
+            subcategory = 'Physical';
+          } else {
+            subcategory = 'Physical'; // Default to Physical for Personal tasks
+          }
+        }
+      } else if (task.category === 'Business') {
+        if (!validBusinessSubcategories.includes(subcategory)) {
+          // Map common mismatches
+          if (subcategory === 'Operational') {
+            subcategory = 'Operations';
+          } else {
+            subcategory = 'Operations'; // Default to Operations for Business tasks
+          }
+        }
+      }
+      
+      return {
+        ...task,
+        subcategory
+      };
+    });
+    
+    return fixedTasks;
   } catch (error) {
     console.error("Error analyzing image - Full details:", error);
     console.error("Error stack:", error instanceof Error ? error.stack : error);
