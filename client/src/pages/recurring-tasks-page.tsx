@@ -94,6 +94,7 @@ interface ExtractedRecurringTask {
 export default function RecurringTasksPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<"weekly" | "monthly" | "quarterly" | "yearly">("weekly");
   const [draggedTask, setDraggedTask] = useState<RecurringTask | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isTaskLibraryOpen, setIsTaskLibraryOpen] = useState(false);
   
@@ -399,23 +400,15 @@ export default function RecurringTasksPage() {
 
   const handleDragStart = (task: RecurringTask, e: React.DragEvent) => {
     setDraggedTask(task);
+    setIsDragging(true);
     // Store task data in dataTransfer to work across overlay boundaries
     e.dataTransfer.setData('application/json', JSON.stringify(task));
     e.dataTransfer.effectAllowed = 'move';
-    
-    // Auto-close the Task Library overlay when dragging starts
-    // This allows the drag to reach the Weekly Matrix drop zones
-    if (isTaskLibraryOpen) {
-      setIsTaskLibraryOpen(false);
-      // Add a small delay to ensure the drag continues after overlay closes
-      setTimeout(() => {
-        // The drag is already in progress, no action needed
-      }, 10);
-    }
   };
 
   const handleDragEnd = () => {
     setDraggedTask(null);
+    setIsDragging(false);
   };
 
   const handleDrop = (dayIndex: number, timeBlock: string, e: React.DragEvent) => {
@@ -1382,7 +1375,15 @@ export default function RecurringTasksPage() {
             Task Library
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-80 sm:w-96" style={{ pointerEvents: 'auto' }}>
+        <SheetContent 
+          side="left" 
+          className="w-80 sm:w-96"
+          style={{ 
+            pointerEvents: isDragging ? 'none' : 'auto',
+            opacity: isDragging ? 0.3 : 1,
+            transition: 'opacity 0.2s'
+          }}
+        >
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Library className="h-5 w-5" />
