@@ -40,7 +40,9 @@ export default function DailyWorksheet() {
   const [currentTime, setCurrentTime] = useState("2:30:00");
   const [totalTime] = useState("6:45:00");
   const [breakTimer] = useState("4:30:00");
-  const [energyLevel, setEnergyLevel] = useState(200);
+  const [caloricIntake, setCaloricIntake] = useState(2200);
+  const [caloricExpenditure, setCaloricExpenditure] = useState(-1000);
+  const baseExpenditure = -2300; // Base Metabolic Rate (constant)
   const [quickTask, setQuickTask] = useState("");
   const [aiMessage, setAiMessage] = useState("");
   const { toast } = useToast();
@@ -151,8 +153,12 @@ export default function DailyWorksheet() {
     });
   };
 
-  const handleEnergyChange = (delta: number) => {
-    setEnergyLevel(prev => Math.max(0, prev + delta));
+  const handleCalorieUpdate = (type: 'intake' | 'expenditure', delta: number) => {
+    if (type === 'intake') {
+      setCaloricIntake(prev => Math.max(0, prev + delta));
+    } else {
+      setCaloricExpenditure(prev => Math.min(0, prev - delta)); // Keep expenditure negative or zero
+    }
   };
 
   const handleQuickTaskSubmit = () => {
@@ -173,7 +179,7 @@ export default function DailyWorksheet() {
   };
 
   const getCompletedTasks = () => {
-    return schedule.filter((entry: any) => entry.status === 'completed').length;
+    return (schedule as any[]).filter((entry: any) => entry.status === 'completed').length;
   };
 
   const getTotalQuartiles = () => {
@@ -214,26 +220,12 @@ export default function DailyWorksheet() {
             </div>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-muted-foreground">Energy:</span>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => handleEnergyChange(-50)}
-                  data-testid="button-energy-decrease"
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <span className="font-medium min-w-[3rem] text-center" data-testid="text-energy-level">
-                  +{energyLevel}
+                <span className="text-sm text-muted-foreground">Net Cal:</span>
+                <span className={`font-medium min-w-[3rem] text-center ${
+                  (caloricIntake + caloricExpenditure + baseExpenditure) >= 0 ? 'text-green-600' : 'text-red-600'
+                }`} data-testid="text-net-calories">
+                  {caloricIntake + caloricExpenditure + baseExpenditure}
                 </span>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => handleEnergyChange(50)}
-                  data-testid="button-energy-increase"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
               </div>
               <Button onClick={handleTimerToggle} data-testid="button-timer-toggle">
                 {timerRunning ? (
@@ -362,32 +354,70 @@ export default function DailyWorksheet() {
             </CardContent>
           </Card>
 
-          {/* Energy Tracking */}
+          {/* Calorie Tracking */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Energy Tracking</CardTitle>
+              <CardTitle className="text-base">Calorie Tracking</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Exercise:</span>
-                <span className="text-sm font-medium text-destructive" data-testid="text-exercise-impact">-500</span>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Caloric Intake:</span>
+                <div className="flex items-center space-x-1">
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={() => handleCalorieUpdate('intake', -100)}
+                    className="h-6 w-6 p-0"
+                    data-testid="button-intake-decrease"
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="text-sm font-medium text-green-600 min-w-[3rem] text-right" data-testid="text-caloric-intake">{caloricIntake}</span>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={() => handleCalorieUpdate('intake', 100)}
+                    className="h-6 w-6 p-0"
+                    data-testid="button-intake-increase"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Caloric Expenditure:</span>
+                <div className="flex items-center space-x-1">
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={() => handleCalorieUpdate('expenditure', -100)}
+                    className="h-6 w-6 p-0"
+                    data-testid="button-expenditure-decrease"
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="text-sm font-medium text-orange-600 min-w-[3rem] text-right" data-testid="text-caloric-expenditure">{caloricExpenditure}</span>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={() => handleCalorieUpdate('expenditure', 100)}
+                    className="h-6 w-6 p-0"
+                    data-testid="button-expenditure-increase"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
               <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Break:</span>
-                <span className="text-sm font-medium text-business" data-testid="text-break-impact">+200</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Deep Work:</span>
-                <span className="text-sm font-medium text-destructive" data-testid="text-work-impact">-300</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Meal:</span>
-                <span className="text-sm font-medium text-business" data-testid="text-meal-impact">+100</span>
+                <span className="text-sm text-muted-foreground">Base Expenditure:</span>
+                <span className="text-sm font-medium text-red-600" data-testid="text-base-expenditure">{baseExpenditure}</span>
               </div>
               <hr className="border-border" />
               <div className="flex justify-between font-medium">
-                <span className="text-sm text-foreground">Net Energy:</span>
-                <span className="text-sm text-business" data-testid="text-net-energy">+{energyLevel}</span>
+                <span className="text-sm text-foreground">Net Calories:</span>
+                <span className={`text-sm ${
+                  (caloricIntake + caloricExpenditure + baseExpenditure) >= 0 ? 'text-green-600' : 'text-red-600'
+                }`} data-testid="text-net-calories-summary">{caloricIntake + caloricExpenditure + baseExpenditure}</span>
               </div>
             </CardContent>
           </Card>
