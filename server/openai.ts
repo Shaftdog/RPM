@@ -205,6 +205,7 @@ export async function generateDailySchedule(
     const trimmedRecurring = recurringTasks.slice(0, 10).map(rt => ({
       taskName: rt.taskName,
       timeBlock: rt.timeBlock,
+      quarter: rt.quarter,
       daysOfWeek: rt.daysOfWeek,
       durationMinutes: rt.durationMinutes
     }));
@@ -217,6 +218,8 @@ export async function generateDailySchedule(
     User Preferences: ${JSON.stringify(userPreferences)}
     
     Time Blocks: Recover, PHYSICAL MENTAL, CHIEF PROJECT, HOUR OF POWER, PRODUCTION WORK, COMPANY BLOCK, BUSINESS AUTOMATION, ENVIRONMENTAL, FLEXIBLE BLOCK, WIND DOWN
+    
+    IMPORTANT: For recurring tasks, if they have a "quarter" field specified (1=Q1/First 25%, 2=Q2/Second 25%, 3=Q3/Third 25%, 4=Q4/Fourth 25%), place them in that specific quarter within their designated time block. This ensures consistent placement according to user preferences.
     
     Return JSON with schedule structure mapping time blocks to quartiles with assigned tasks.
     `;
@@ -415,6 +418,7 @@ export interface ExtractedRecurringTask {
   durationMinutes: number;
   energyImpact: number;
   priority: "High" | "Medium" | "Low";
+  quarter?: number;
   description?: string;
   tags?: string[];
 }
@@ -439,8 +443,9 @@ export async function extractRecurringTasksFromContent(content: string): Promise
     7. priority: "High", "Medium", or "Low"
     8. durationMinutes: Number of minutes the task typically takes
     9. energyImpact: Number from -500 to +500 (negative = draining, positive = energizing)
-    10. description: Brief description of what the task involves
-    11. tags: Array of relevant tags/keywords
+    10. quarter: Number from 1-4 for preferred quarter within the time block (1=Q1/First 25%, 2=Q2/Second 25%, 3=Q3/Third 25%, 4=Q4/Fourth 25%) - OPTIONAL, default to null if not specified
+    11. description: Brief description of what the task involves (optional)
+    12. tags: Array of relevant tags/keywords (optional)
 
     Return as a JSON object with an array of tasks under the key "tasks".
     Focus on identifying patterns, routines, and recurring activities rather than one-time tasks.
