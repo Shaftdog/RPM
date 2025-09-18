@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -26,7 +26,9 @@ import {
   Download,
   X,
   Loader2,
-  Library
+  Library,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -35,7 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -96,7 +98,11 @@ export default function RecurringTasksPage() {
   const [draggedTask, setDraggedTask] = useState<RecurringTask | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isTaskLibraryOpen, setIsTaskLibraryOpen] = useState(false);
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
+    const saved = localStorage.getItem('recurring-tasks-panel-collapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
+  const [activeTab, setActiveTab] = useState("library");
   
   // AI Assistant state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -109,6 +115,11 @@ export default function RecurringTasksPage() {
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Persist panel collapse state to localStorage
+  useEffect(() => {
+    localStorage.setItem('recurring-tasks-panel-collapsed', JSON.stringify(isPanelCollapsed));
+  }, [isPanelCollapsed]);
 
   // Fetch recurring tasks
   const { data: recurringTasks = [], isLoading: tasksLoading, error: tasksError } = useQuery<RecurringTask[]>({
@@ -402,16 +413,10 @@ export default function RecurringTasksPage() {
     console.log('Drag started for task:', task.taskName);
     setDraggedTask(task);
     setIsDragging(true);
-    // Store task data in dataTransfer to work across overlay boundaries
+    // Store task data in dataTransfer for cross-component drag and drop
     e.dataTransfer.setData('application/json', JSON.stringify(task));
     e.dataTransfer.setData('text/plain', JSON.stringify(task)); // Add fallback format
     e.dataTransfer.effectAllowed = 'move';
-    
-    // Close the overlay after a small delay to allow the drag to properly start
-    setTimeout(() => {
-      setIsTaskLibraryOpen(false);
-      setIsDragging(false);
-    }, 100);
   };
 
   const handleDragEnd = () => {
@@ -660,43 +665,6 @@ export default function RecurringTasksPage() {
     </div>
   );
 
-  const TaskLibrarySidebar = () => (
-    <Card className="h-full">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Task Library</CardTitle>
-          <Button size="sm" data-testid="button-add-recurring-task">
-            <Plus className="h-4 w-4 mr-1" />
-            Add
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        <ScrollArea className="h-[600px] px-4">
-          {tasksLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="h-16 bg-muted animate-pulse rounded" />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-2 pb-4">
-              {recurringTasks.map((task: RecurringTask) => (
-                <TaskCard key={task.id} task={task} />
-              ))}
-              {recurringTasks.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Repeat className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No recurring tasks yet</p>
-                  <p className="text-xs">Create your first recurring task</p>
-                </div>
-              )}
-            </div>
-          )}
-        </ScrollArea>
-      </CardContent>
-    </Card>
-  );
 
   // AI Recurring Assistant Component
   const AIRecurringAssistant = () => {
@@ -1033,6 +1001,384 @@ export default function RecurringTasksPage() {
     );
   }
 
+  // Sticky Top Panel Component
+  const StickyTopPanel = () => {
+
+    const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDragEnter = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const files = Array.from(e.dataTransfer.files);
+      const validFiles = files.filter(file => {
+        const validTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png', 'image/jpg'];
+        return validTypes.includes(file.type);
+      });
+      
+      if (validFiles.length > 0) {
+        handleFileUpload(validFiles);
+      } else {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload PDF, TXT, DOC, JPG, or PNG files only",
+          variant: "destructive",
+        });
+      }
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length > 0) {
+        handleFileUpload(files);
+      }
+    };
+
+    const formatTime = (date: Date) => {
+      return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    };
+
+    const toggleTaskSelection = (taskId: string) => {
+      setExtractedTasks(prev => 
+        prev.map(task => 
+          task.id === taskId ? { ...task, selected: !task.selected } : task
+        )
+      );
+    };
+
+    const selectedTasksCount = extractedTasks.filter(task => task.selected).length;
+
+    return (
+      <Card className="sticky top-0 z-30 mb-6">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">Task Management</h2>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+              data-testid="toggle-panel-collapse"
+            >
+              {isPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
+        </CardHeader>
+        {!isPanelCollapsed && (
+          <CardContent>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="library" data-testid="tab-library">
+                  <Library className="h-4 w-4 mr-2" />
+                  Library
+                </TabsTrigger>
+                <TabsTrigger value="ai-assistant" data-testid="tab-ai-assistant">
+                  <Bot className="h-4 w-4 mr-2" />
+                  AI Assistant
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="library" className="mt-4">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Drag tasks to the Weekly Matrix to schedule them
+                    </p>
+                    <Button size="sm" data-testid="button-add-recurring-task">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
+                    </Button>
+                  </div>
+                  <div className="relative h-40">
+                    {tasksLoading ? (
+                      <div className="flex space-x-3 overflow-x-auto pb-2">
+                        {[1, 2, 3].map(i => (
+                          <div key={i} className="flex-shrink-0 w-80 h-32 bg-muted animate-pulse rounded" />
+                        ))}
+                      </div>
+                    ) : (
+                      <div 
+                        className="flex space-x-3 overflow-x-auto pb-2 h-full" 
+                        data-testid="row-task-library"
+                      >
+                        {recurringTasks.map((task: RecurringTask) => (
+                          <div key={task.id} className="flex-shrink-0 w-80">
+                            <TaskCard task={task} />
+                          </div>
+                        ))}
+                        {recurringTasks.length === 0 && (
+                          <div className="text-center py-8 text-muted-foreground flex-1">
+                            <Repeat className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No recurring tasks yet</p>
+                            <p className="text-xs">Create your first recurring task</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="ai-assistant" className="mt-4">
+                <div className="space-y-6">
+                  {/* File Upload Area */}
+                  <div className="space-y-3">
+                    <h3 className="font-medium flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      Upload Files
+                    </h3>
+                    <div
+                      className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                        isUploading 
+                          ? 'border-primary bg-primary/5' 
+                          : 'border-muted-foreground/25 hover:border-primary/50'
+                      }`}
+                      onDragOver={handleDragOver}
+                      onDragEnter={handleDragEnter}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      role="button"
+                      data-testid="upload-area"
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept=".pdf,.txt,.doc,.docx,.jpg,.jpeg,.png"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                        data-testid="file-input"
+                      />
+                      {isUploading ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                          <p className="text-sm text-muted-foreground">Processing files...</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="flex gap-2">
+                            <FileText className="h-6 w-6 text-muted-foreground" />
+                            <Image className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                          <p className="text-sm font-medium">Drop files here or click to upload</p>
+                          <p className="text-xs text-muted-foreground">PDF, TXT, DOC, JPG, PNG files supported</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Chat Interface */}
+                  <div className="space-y-3">
+                    <h3 className="font-medium flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Chat with AI
+                    </h3>
+                    <div className="border rounded-lg">
+                      <ScrollArea className="h-48 p-4">
+                        {chatMessages.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <Bot className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">Start a conversation with the AI</p>
+                            <p className="text-xs">Upload files or ask questions about recurring tasks</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {chatMessages.map((message) => (
+                              <div key={message.id} className={`flex gap-3 ${
+                                message.role === 'user' ? 'justify-end' : 'justify-start'
+                              }`}>
+                                <div className={`flex gap-2 max-w-[80%] ${
+                                  message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+                                }`}>
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
+                                    message.role === 'user' 
+                                      ? 'bg-primary text-primary-foreground' 
+                                      : 'bg-muted text-muted-foreground'
+                                  }`}>
+                                    {message.role === 'user' ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
+                                  </div>
+                                  <div className={`rounded-lg px-3 py-2 text-sm ${
+                                    message.role === 'user'
+                                      ? 'bg-primary text-primary-foreground'
+                                      : 'bg-muted'
+                                  }`}>
+                                    <p>{message.content}</p>
+                                    <p className="text-xs opacity-70 mt-1">
+                                      {formatTime(message.timestamp)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                            {isChatLoading && (
+                              <div className="flex gap-3 justify-start">
+                                <div className="flex gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs">
+                                    <Bot className="h-3 w-3" />
+                                  </div>
+                                  <div className="rounded-lg px-3 py-2 text-sm bg-muted">
+                                    <div className="flex items-center gap-2">
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      <span>Thinking...</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </ScrollArea>
+                      <div className="border-t p-3">
+                        <div className="flex gap-2">
+                          <Input
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            placeholder="Ask me anything about recurring tasks..."
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleChatSubmit(chatInput);
+                              }
+                            }}
+                            disabled={isChatLoading}
+                            data-testid="input-chat"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => handleChatSubmit(chatInput)}
+                            disabled={!chatInput.trim() || isChatLoading}
+                            data-testid="button-send-chat"
+                          >
+                            <Send className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Extracted Tasks */}
+                  {extractedTasks.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-medium flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4" />
+                          Extracted Tasks ({selectedTasksCount} selected)
+                        </h3>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setExtractedTasks([])}
+                            data-testid="button-clear-tasks"
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Clear
+                          </Button>
+                          <Button 
+                            size="sm"
+                            onClick={handleApplyTasks}
+                            disabled={selectedTasksCount === 0}
+                            data-testid="button-apply-tasks"
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            Apply ({selectedTasksCount})
+                          </Button>
+                        </div>
+                      </div>
+                      <ScrollArea className="h-48 border rounded-lg">
+                        <div className="p-4 space-y-2">
+                          {extractedTasks.map((task) => (
+                            <Card 
+                              key={task.id} 
+                              className={`p-3 cursor-pointer transition-colors ${
+                                task.selected ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                              }`}
+                              onClick={() => toggleTaskSelection(task.id)}
+                              data-testid={`extracted-task-${task.id}`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <Checkbox
+                                  checked={task.selected}
+                                  onChange={() => toggleTaskSelection(task.id)}
+                                  data-testid={`checkbox-task-${task.id}`}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="font-medium text-sm truncate">{task.taskName}</h4>
+                                    <Badge variant="outline" className="text-xs">
+                                      {task.taskType}
+                                    </Badge>
+                                    <Badge variant="secondary" className="text-xs">
+                                      {task.priority}
+                                    </Badge>
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {Math.round(task.durationMinutes/60*10)/10}h
+                                    </span>
+                                    <span 
+                                      className={`flex items-center gap-1 font-medium ${
+                                        task.energyImpact >= 0 ? 'text-green-600' : 'text-red-600'
+                                      }`}
+                                    >
+                                      {task.energyImpact >= 0 ? '+' : ''}{task.energyImpact}
+                                    </span>
+                                  </div>
+                                  
+                                  <div className="text-xs text-muted-foreground">
+                                    {task.timeBlock} • {task.daysOfWeek.join(', ')}
+                                  </div>
+                                  
+                                  {task.description && (
+                                    <p className="text-xs text-muted-foreground line-clamp-2">
+                                      {task.description}
+                                    </p>
+                                  )}
+                                  
+                                  {task.tags && task.tags.length > 0 && (
+                                    <div className="flex gap-1 flex-wrap">
+                                      {task.tags.map((tag, index) => (
+                                        <Badge key={index} variant="secondary" className="text-xs">
+                                          {tag}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </Card>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        )}
+      </Card>
+    );
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -1337,73 +1683,37 @@ export default function RecurringTasksPage() {
         </div>
       </div>
 
-      {/* Responsive Grid Layout - Full Width */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">        
-        {/* Main content area - Weekly Matrix */}
-        <div className="space-y-6">
-          {/* Weekly Matrix */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarDays className="h-5 w-5" />
-                Weekly Matrix
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WeeklyMatrix />
-            </CardContent>
-          </Card>
+      {/* Sticky Top Panel */}
+      <StickyTopPanel />
 
-          {/* Periodic Recurring */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Repeat className="h-5 w-5" />
-                Periodic Recurring
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PeriodicRecurring />
-            </CardContent>
-          </Card>
-        </div>
+      {/* Main Content - Full Width */}
+      <div className="space-y-6">
+        {/* Weekly Matrix */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5" />
+              Weekly Matrix
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <WeeklyMatrix />
+          </CardContent>
+        </Card>
 
-        {/* AI Recurring Assistant - Right Panel */}
-        <div>
-          <AIRecurringAssistant />
-        </div>
+        {/* Periodic Recurring */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Repeat className="h-5 w-5" />
+              Periodic Recurring
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PeriodicRecurring />
+          </CardContent>
+        </Card>
       </div>
-
-      {/* Floating Task Library Toggle Button */}
-      <Sheet open={isTaskLibraryOpen} onOpenChange={setIsTaskLibraryOpen}>
-        <SheetTrigger asChild>
-          <Button 
-            size="lg"
-            className="fixed bottom-6 left-6 rounded-full shadow-lg z-50"
-            data-testid="task-library-toggle"
-          >
-            <Library className="h-5 w-5 mr-2" />
-            Task Library
-          </Button>
-        </SheetTrigger>
-        <SheetContent 
-          side="left" 
-          className="w-80 sm:w-96"
-        >
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <Library className="h-5 w-5" />
-              Task Library
-            </SheetTitle>
-            <p className="text-xs text-muted-foreground mt-2">
-              Drag tasks to the Weekly Matrix to schedule them
-            </p>
-          </SheetHeader>
-          <div className="mt-6">
-            <TaskLibrarySidebar />
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }
