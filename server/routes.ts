@@ -458,13 +458,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         energyPatterns: {}
       };
       
+      // Filter out Milestones and Sub-Milestones from scheduling
+      // These are deliverables, not actionable tasks that should be time-blocked
+      const tasksForScheduling = tasks.filter(task => 
+        task.type !== 'Milestone' && task.type !== 'Sub-Milestone'
+      );
+
       console.time('generate_schedule');
-      const aiSchedule = await generateDailySchedule(tasks, recurringTasks, userPreferences);
+      const aiSchedule = await generateDailySchedule(tasksForScheduling, recurringTasks, userPreferences);
       console.timeEnd('generate_schedule');
       
-      // Build task name index for name→ID lookup
+      // Build task name index for name→ID lookup (only from schedulable tasks)
       const nameToId = new Map<string, string>();
-      tasks.forEach(task => {
+      tasksForScheduling.forEach(task => {
         nameToId.set(task.name.toLowerCase().trim(), task.id);
       });
       
@@ -472,11 +478,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const scheduleDate = new Date(date);
       const scheduleEntries = normalizeAIScheduleToEntries(aiSchedule, scheduleDate, nameToId);
       
+      // Final guard: Filter out any entries that reference Milestone or Sub-Milestone tasks
+      // This ensures no Milestones can slip through via direct ID references
+      const allowedIdSet = new Set(tasksForScheduling.map(task => task.id));
+      const filteredScheduleEntries = scheduleEntries.filter(entry => 
+        !entry.plannedTaskId || allowedIdSet.has(entry.plannedTaskId)
+      );
+      
       // Clear existing schedule for this date and save new entries
-      if (scheduleEntries.length > 0) {
-        console.log(`Saving ${scheduleEntries.length} schedule entries for ${date}`);
+      if (filteredScheduleEntries.length > 0) {
+        console.log(`Saving ${filteredScheduleEntries.length} schedule entries for ${date}`);
         await storage.clearDailySchedule(userId, scheduleDate);
-        await storage.createDailyScheduleEntries(userId, scheduleEntries);
+        await storage.createDailyScheduleEntries(userId, filteredScheduleEntries);
       }
       
       res.json(aiSchedule);

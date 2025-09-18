@@ -173,6 +173,12 @@ export async function generateDailySchedule(
     energyPatterns?: Record<string, number>;
   }
 ): Promise<any> {
+  // Defensive filtering: exclude Milestones and Sub-Milestones from scheduling
+  // These are deliverables, not actionable tasks that should be time-blocked
+  const filteredTasks = tasks.filter(task => 
+    task.type !== 'Milestone' && task.type !== 'Sub-Milestone'
+  );
+  
   const OPENAI_TIMEOUT_MS = 12000; // 12 second timeout
   
   // Check if we have a valid OpenAI API key
@@ -182,12 +188,12 @@ export async function generateDailySchedule(
   
   if (!hasValidKey) {
     console.log("OpenAI API key not configured, using local fallback scheduler");
-    return generateLocalSchedule(tasks, recurringTasks, userPreferences);
+    return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
   }
 
   try {
     // Trim inputs to essentials for smaller payload
-    const trimmedTasks = tasks.slice(0, 20).map(t => ({
+    const trimmedTasks = filteredTasks.slice(0, 20).map(t => ({
       id: t.id,
       name: t.name,
       priority: t.priority,
@@ -244,7 +250,7 @@ export async function generateDailySchedule(
   } catch (error) {
     console.error("Error generating daily schedule:", error);
     console.log("Falling back to local scheduler");
-    return generateLocalSchedule(tasks, recurringTasks, userPreferences);
+    return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
   }
 }
 
