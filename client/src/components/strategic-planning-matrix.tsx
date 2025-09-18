@@ -12,6 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -24,7 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon } from "lucide-react";
+import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon, Trash2 } from "lucide-react";
 import { format, isPast, isToday, isTomorrow, formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +62,7 @@ export default function StrategicPlanningMatrix() {
   const [isTaskDetailsOpen, setIsTaskDetailsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState<Task | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const { toast } = useToast();
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
@@ -139,6 +150,29 @@ export default function StrategicPlanningMatrix() {
     },
   });
 
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await apiRequest("DELETE", `/api/tasks/${taskId}`);
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+      toast({
+        title: "Task deleted successfully!",
+        description: "The task has been removed.",
+      });
+      setTaskToDelete(null);
+      setIsTaskDetailsOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error deleting task",
+        description: error.message || "Failed to delete task",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Organize tasks by matrix structure
   const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Quarter', 'Week', 'Today', 'BACKLOG'];
   const categories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure', 'Marketing', 'Sales', 'Operations', 'Products', 'Production'];
@@ -212,6 +246,16 @@ export default function StrategicPlanningMatrix() {
   const updateEditField = (field: keyof Task, value: string | number | null) => {
     if (editFormData) {
       setEditFormData({ ...editFormData, [field]: value });
+    }
+  };
+
+  const handleDeleteTask = (task: Task) => {
+    setTaskToDelete(task);
+  };
+
+  const confirmDeleteTask = () => {
+    if (taskToDelete) {
+      deleteTaskMutation.mutate(taskToDelete.id);
     }
   };
 
@@ -498,15 +542,26 @@ export default function StrategicPlanningMatrix() {
                 {isEditing ? "Edit Task" : "Task Details"}
               </DialogTitle>
               {!isEditing && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleEditStart}
-                  data-testid="button-edit-task"
-                >
-                  <Edit3 className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleEditStart}
+                    data-testid="button-edit-task"
+                  >
+                    <Edit3 className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => selectedTask && handleDeleteTask(selectedTask)}
+                    data-testid="button-delete-task"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </div>
               )}
             </div>
           </DialogHeader>
@@ -1026,6 +1081,30 @@ export default function StrategicPlanningMatrix() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!taskToDelete} onOpenChange={() => setTaskToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{taskToDelete?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteTask}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete"
+            >
+              Delete Task
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
