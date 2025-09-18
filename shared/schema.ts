@@ -111,7 +111,7 @@ export const recurringTasks = pgTable("recurring_tasks", {
   durationMinutes: integer("duration_minutes").notNull(),
   energyImpact: integer("energy_impact").default(0), // -500 to +500
   priority: priorityEnum("priority").notNull().default("Medium"),
-  quartile: integer("quartile"), // 1-4 for which quartile within the block
+  quarter: integer("quarter"), // 1-4 for Q1, Q2, Q3, Q4 within the time block
   description: text("description"),
   defaultTimeBlock: text("default_time_block"), // optional preferred time block
   tags: jsonb("tags").$type<string[]>(), // array of tags

@@ -1923,6 +1923,30 @@ export default function RecurringTasksPage() {
 
                     <FormField
                       control={form.control}
+                      name="quarter"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Quarter (within Time Block)</FormLabel>
+                          <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-quarter">
+                                <SelectValue placeholder="Select quarter" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="1">Q1 (First 25%)</SelectItem>
+                              <SelectItem value="2">Q2 (Second 25%)</SelectItem>
+                              <SelectItem value="3">Q3 (Third 25%)</SelectItem>
+                              <SelectItem value="4">Q4 (Fourth 25%)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
                       name="durationMinutes"
                       render={({ field }) => (
                         <FormItem>
