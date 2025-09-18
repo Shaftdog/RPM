@@ -30,7 +30,10 @@ import {
   ChevronDown,
   ChevronUp,
   Edit,
-  Trash2
+  Trash2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -130,6 +133,10 @@ export default function RecurringTasksPage() {
   const [selectedTaskForScheduling, setSelectedTaskForScheduling] = useState<RecurringTask | null>(null);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("library");
+  
+  // Weekly Matrix sorting state
+  const [sortField, setSortField] = useState<"quarter" | "priority" | "name" | "category">("quarter");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   
   // AI Assistant state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -854,9 +861,47 @@ export default function RecurringTasksPage() {
                   schedule.dayOfWeek === dayIndex && 
                   schedule.timeBlock === timeBlock
                 )
+                .sort((scheduleA, scheduleB) => {
+                  const taskA = recurringTasks.find(t => t.id === scheduleA.recurringTaskId);
+                  const taskB = recurringTasks.find(t => t.id === scheduleB.recurringTaskId);
+                  if (!taskA || !taskB) return 0;
+                  
+                  let comparison = 0;
+                  
+                  switch (sortField) {
+                    case "quarter":
+                      const quarterA = taskA.quarter || 99; // Put tasks without quarters at the end
+                      const quarterB = taskB.quarter || 99;
+                      comparison = quarterA - quarterB;
+                      break;
+                    case "priority":
+                      const priorityOrder = { "High": 1, "Medium": 2, "Low": 3 };
+                      comparison = priorityOrder[taskA.priority] - priorityOrder[taskB.priority];
+                      break;
+                    case "name":
+                      comparison = taskA.taskName.localeCompare(taskB.taskName);
+                      break;
+                    case "category":
+                      comparison = taskA.category.localeCompare(taskB.category);
+                      break;
+                  }
+                  
+                  return sortDirection === "asc" ? comparison : -comparison;
+                })
                 .map(schedule => {
                   const task = recurringTasks.find(t => t.id === schedule.recurringTaskId);
                   if (!task) return null;
+                  
+                  // Get priority color for badge
+                  const getPriorityColor = (priority: string) => {
+                    switch (priority) {
+                      case "High": return "bg-red-100 text-red-800 border-red-200";
+                      case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
+                      case "Low": return "bg-green-100 text-green-800 border-green-200";
+                      default: return "bg-gray-100 text-gray-800 border-gray-200";
+                    }
+                  };
+                  
                   return (
                     <div 
                       key={schedule.id} 
@@ -878,8 +923,31 @@ export default function RecurringTasksPage() {
                       title={`Click to edit ${task.taskName}`}
                       data-testid={`edit-scheduled-task-${schedule.id}`}
                     >
-                      <div className="font-medium">{task.taskName}</div>
-                      <div className="text-muted-foreground">{Math.round(task.durationMinutes/60*10)/10}h</div>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="font-medium truncate flex-1">{task.taskName}</div>
+                        <div className="flex items-center gap-1 ml-1">
+                          {task.quarter && (
+                            <Badge 
+                              variant="outline" 
+                              className="text-[10px] px-1 py-0 h-4 bg-blue-50 text-blue-700 border-blue-200"
+                              data-testid={`quarter-badge-${task.quarter}`}
+                            >
+                              Q{task.quarter}
+                            </Badge>
+                          )}
+                          <Badge 
+                            variant="outline" 
+                            className={`text-[10px] px-1 py-0 h-4 ${getPriorityColor(task.priority)}`}
+                            data-testid={`priority-badge-${task.priority.toLowerCase()}`}
+                          >
+                            {task.priority.charAt(0)}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-muted-foreground flex items-center justify-between">
+                        <span>{Math.round(task.durationMinutes/60*10)/10}h</span>
+                        <span className="text-[10px] opacity-75">{task.category}</span>
+                      </div>
                     </div>
                   );
                 })}
@@ -2138,10 +2206,42 @@ export default function RecurringTasksPage() {
         {/* Weekly Matrix */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5" />
-              Weekly Matrix
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" />
+                Weekly Matrix
+              </CardTitle>
+              
+              {/* Sort Controls */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Sort by:</span>
+                <Select value={sortField} onValueChange={(value: "quarter" | "priority" | "name" | "category") => setSortField(value)}>
+                  <SelectTrigger className="w-32" data-testid="select-sort-field">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="quarter">Quarter</SelectItem>
+                    <SelectItem value="priority">Priority</SelectItem>
+                    <SelectItem value="name">Name</SelectItem>
+                    <SelectItem value="category">Category</SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+                  className="px-2"
+                  data-testid="button-sort-direction"
+                >
+                  {sortDirection === "asc" ? (
+                    <ArrowUp className="h-4 w-4" />
+                  ) : (
+                    <ArrowDown className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <WeeklyMatrix />
