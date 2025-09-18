@@ -1409,17 +1409,13 @@ export default function RecurringTasksPage() {
               
               <TabsContent value="library" className="mt-4">
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div>
                     <p className="text-sm text-muted-foreground">
                       {isMobile 
                         ? 'Tap tasks or use context menu to schedule them'
                         : 'Drag tasks to the Weekly Matrix to schedule them'
                       }
                     </p>
-                    <Button size="sm" data-testid="button-add-recurring-task">
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add
-                    </Button>
                   </div>
                   <div className={`relative ${
                     isMobile ? 'h-32' : 'h-40'
