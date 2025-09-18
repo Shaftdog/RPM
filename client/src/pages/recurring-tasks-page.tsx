@@ -858,7 +858,26 @@ export default function RecurringTasksPage() {
                   const task = recurringTasks.find(t => t.id === schedule.recurringTaskId);
                   if (!task) return null;
                   return (
-                    <div key={schedule.id} className="text-xs bg-primary/10 border border-primary/20 rounded p-1 mb-1">
+                    <div 
+                      key={schedule.id} 
+                      className="text-xs bg-primary/10 border border-primary/20 rounded p-1 mb-1 cursor-pointer hover:bg-primary/20 hover:border-primary/30 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditingTask(task);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startEditingTask(task);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Edit recurring task: ${task.taskName}`}
+                      title={`Click to edit ${task.taskName}`}
+                      data-testid={`edit-scheduled-task-${schedule.id}`}
+                    >
                       <div className="font-medium">{task.taskName}</div>
                       <div className="text-muted-foreground">{Math.round(task.durationMinutes/60*10)/10}h</div>
                     </div>
