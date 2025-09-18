@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Pause, Plus, Minus, Camera, Calendar } from "lucide-react";
+import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target } from "lucide-react";
 
 const TIME_BLOCKS = [
   { name: "Recover", time: "12am-7am", quartiles: 4 },
@@ -43,6 +43,13 @@ export default function DailyWorksheet() {
   const baseExpenditure = -2300; // Base Metabolic Rate (constant)
   const [quickTask, setQuickTask] = useState("");
   const [aiMessage, setAiMessage] = useState("");
+  const [isOutcomesCollapsed, setIsOutcomesCollapsed] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('daily-outcomes-collapsed') || 'false');
+    } catch {
+      return false;
+    }
+  });
   const { toast } = useToast();
 
   const { data: schedule = [], isLoading: scheduleLoading } = useQuery<DailyScheduleEntry[]>({
@@ -60,6 +67,18 @@ export default function DailyWorksheet() {
     task.xDate && 
     new Date(task.xDate).toDateString() === new Date(selectedDate).toDateString()
   );
+
+  // Get Today's Outcomes (Milestones and Sub-Milestones due today)
+  const outcomesToday = tasks.filter(task => 
+    (task.type === 'Milestone' || task.type === 'Sub-Milestone') &&
+    task.xDate && 
+    new Date(task.xDate).toDateString() === new Date(selectedDate).toDateString()
+  );
+
+  // Persist outcomes panel collapse state
+  useEffect(() => {
+    localStorage.setItem('daily-outcomes-collapsed', JSON.stringify(isOutcomesCollapsed));
+  }, [isOutcomesCollapsed]);
 
   // Calculate total calories from completed tasks
   const calculatedCaloricIntake = completedTasks.reduce((total, task) => {
@@ -200,6 +219,77 @@ export default function DailyWorksheet() {
 
   return (
     <div className="space-y-6">
+      {/* Today's Outcomes */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              <CardTitle className="text-lg">Today's Outcomes</CardTitle>
+              {outcomesToday.length > 0 && (
+                <Badge variant="secondary" className="text-xs" data-testid="badge-outcomes-count">
+                  {outcomesToday.length}
+                </Badge>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsOutcomesCollapsed(!isOutcomesCollapsed)}
+              aria-expanded={!isOutcomesCollapsed}
+              data-testid="button-toggle-outcomes"
+            >
+              {isOutcomesCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
+        </CardHeader>
+        {!isOutcomesCollapsed && (
+          <CardContent className="pt-0">
+            {outcomesToday.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground" data-testid="status-no-outcomes">
+                <Target className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No outcomes due today</p>
+                <p className="text-xs">Milestones and deliverables will appear here</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {outcomesToday.map((outcome) => (
+                  <div
+                    key={outcome.id}
+                    className="flex items-start gap-3 p-3 rounded-lg border bg-card/50"
+                    data-testid={`row-outcome-${outcome.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-medium text-sm truncate" data-testid={`text-outcome-name-${outcome.id}`}>{outcome.name}</h4>
+                        <Badge variant="outline" className="text-xs" data-testid={`badge-outcome-type-${outcome.id}`}>
+                          {outcome.type}
+                        </Badge>
+                        {outcome.category && (
+                          <Badge variant="secondary" className="text-xs" data-testid={`badge-outcome-category-${outcome.id}`}>
+                            {outcome.category}
+                          </Badge>
+                        )}
+                        {outcome.subcategory && (
+                          <Badge variant="secondary" className="text-xs" data-testid={`badge-outcome-subcategory-${outcome.id}`}>
+                            {outcome.subcategory}
+                          </Badge>
+                        )}
+                      </div>
+                      {outcome.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {outcome.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
       {/* Top Controls */}
       <Card>
         <CardContent className="p-6">
