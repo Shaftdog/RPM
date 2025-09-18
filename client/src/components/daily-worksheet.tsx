@@ -47,12 +47,12 @@ export default function DailyWorksheet() {
   const [aiMessage, setAiMessage] = useState("");
   const { toast } = useToast();
 
-  const { data: schedule = [], isLoading: scheduleLoading } = useQuery({
+  const { data: schedule = [], isLoading: scheduleLoading } = useQuery<DailyScheduleEntry[]>({
     queryKey: ['/api/daily', selectedDate],
     enabled: !!selectedDate,
   });
 
-  const { data: tasks = [] } = useQuery({
+  const { data: tasks = [] } = useQuery<any[]>({
     queryKey: ['/api/tasks'],
   });
 
@@ -173,13 +173,13 @@ export default function DailyWorksheet() {
   };
 
   const getScheduleEntry = (timeBlock: string, quartile: number): DailyScheduleEntry | undefined => {
-    return schedule.find((entry: any) => 
+    return schedule.find((entry) => 
       entry.timeBlock === timeBlock && entry.quartile === quartile
     );
   };
 
   const getCompletedTasks = () => {
-    return (schedule as any[]).filter((entry: any) => entry.status === 'completed').length;
+    return schedule.filter((entry) => entry.status === 'completed').length;
   };
 
   const getTotalQuartiles = () => {
@@ -293,7 +293,7 @@ export default function DailyWorksheet() {
                             <SelectValue placeholder="Select task..." />
                           </SelectTrigger>
                           <SelectContent>
-                            {tasks.map((task: any) => (
+                            {tasks.map((task) => (
                               <SelectItem key={task.id} value={task.id}>
                                 {task.name}
                               </SelectItem>

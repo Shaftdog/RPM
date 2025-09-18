@@ -285,7 +285,7 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
                   <Calendar
                     mode="single"
                     selected={quickTaskData.dueDate || undefined}
-                    onSelect={(date) => setQuickTaskData(prev => ({ ...prev, dueDate: date }))}
+                    onSelect={(date) => setQuickTaskData(prev => ({ ...prev, dueDate: date || null }))}
                     initialFocus
                   />
                 </PopoverContent>

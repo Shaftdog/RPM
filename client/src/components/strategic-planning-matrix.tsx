@@ -206,7 +206,7 @@ export default function StrategicPlanningMatrix() {
     }
   };
 
-  const updateEditField = (field: keyof Task, value: string | number) => {
+  const updateEditField = (field: keyof Task, value: string | number | null) => {
     if (editFormData) {
       setEditFormData({ ...editFormData, [field]: value });
     }
