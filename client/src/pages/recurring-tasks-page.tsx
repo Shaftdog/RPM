@@ -29,7 +29,8 @@ import {
   Library,
   ChevronDown,
   ChevronUp,
-  Edit
+  Edit,
+  Trash2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,6 +40,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -109,6 +121,7 @@ export default function RecurringTasksPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<RecurringTask | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<RecurringTask | null>(null);
   const isMobile = useIsMobile();
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
     const saved = localStorage.getItem('recurring-tasks-panel-collapsed');
@@ -224,6 +237,29 @@ export default function RecurringTasksPage() {
     },
   });
 
+  // Delete recurring task mutation
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      return apiRequest("DELETE", `/api/recurring-tasks/${taskId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/recurring-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/recurring/schedule'] });
+      toast({
+        title: "Task deleted!",
+        description: "Recurring task deleted successfully.",
+      });
+      setTaskToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error deleting task",
+        description: error.message || "Failed to delete task",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Form for creating new recurring task
   const form = useForm<InsertRecurringTask>({
     resolver: zodResolver(insertRecurringTaskSchema),
@@ -278,6 +314,18 @@ export default function RecurringTasksPage() {
     if (!open) {
       setEditingTask(null);
       form.reset();
+    }
+  };
+
+  // Function to handle task deletion
+  const handleDeleteTask = (task: RecurringTask) => {
+    setTaskToDelete(task);
+  };
+
+  // Function to confirm task deletion
+  const confirmDeleteTask = () => {
+    if (taskToDelete) {
+      deleteTaskMutation.mutate(taskToDelete.id);
     }
   };
 
@@ -639,7 +687,14 @@ export default function RecurringTasksPage() {
                   Edit
                 </DropdownMenuItem>
                 <DropdownMenuItem>Duplicate</DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleDeleteTask(task)}
+                  className="text-destructive"
+                  data-testid={`delete-task-${task.id}`}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -673,7 +728,14 @@ export default function RecurringTasksPage() {
               Edit Task
             </ContextMenuItem>
             <ContextMenuItem>Duplicate Task</ContextMenuItem>
-            <ContextMenuItem className="text-destructive">Delete Task</ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => handleDeleteTask(task)}
+              className="text-destructive"
+              data-testid={`context-delete-${task.id}`}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Task
+            </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
       );
@@ -801,7 +863,17 @@ export default function RecurringTasksPage() {
                           Edit Schedule
                         </DropdownMenuItem>
                         <DropdownMenuItem>Skip Next</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">Remove</DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            const taskToRemove = recurringTasks.find(t => t.id === schedule.recurringTaskId);
+                            if (taskToRemove) handleDeleteTask(taskToRemove);
+                          }}
+                          className="text-destructive"
+                          data-testid={`remove-schedule-${schedule.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Remove
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -1974,6 +2046,29 @@ export default function RecurringTasksPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{taskToDelete?.taskName}"? This action cannot be undone.
+              All associated schedules will also be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteTask}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="confirm-delete"
+            >
+              {deleteTaskMutation.isPending ? "Deleting..." : "Delete Task"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
