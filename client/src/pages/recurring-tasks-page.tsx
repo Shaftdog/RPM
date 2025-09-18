@@ -194,11 +194,39 @@ export default function RecurringTasksPage() {
       const response = await apiRequest("POST", "/api/recurring-tasks", taskData);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: async (createdTask, taskData) => {
+      // Auto-create schedules if days and time block are selected
+      if (taskData.daysOfWeek && taskData.daysOfWeek.length > 0 && taskData.timeBlock) {
+        for (const dayName of taskData.daysOfWeek) {
+          const dayIndex = DAYS_OF_WEEK.findIndex(day => 
+            day.toLowerCase() === dayName.toLowerCase()
+          );
+          
+          if (dayIndex !== -1) {
+            const scheduleData = {
+              recurringTaskId: createdTask.id,
+              scheduleType: "weekly" as const,
+              dayOfWeek: dayIndex,
+              timeBlock: taskData.timeBlock,
+              isActive: true,
+            };
+            
+            try {
+              await apiRequest("POST", "/api/recurring/schedule", scheduleData);
+            } catch (error) {
+              console.error('Failed to create schedule for', dayName, ':', error);
+            }
+          }
+        }
+      }
+      
       queryClient.invalidateQueries({ queryKey: ['/api/recurring-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/recurring/schedule'] });
       toast({
         title: "Task created!",
-        description: "Recurring task created successfully.",
+        description: taskData.daysOfWeek && taskData.daysOfWeek.length > 0 && taskData.timeBlock 
+          ? `Task created and scheduled for ${taskData.daysOfWeek.length} day(s)`
+          : "Recurring task created successfully.",
       });
       setIsCreateDialogOpen(false);
       form.reset();
@@ -218,11 +246,49 @@ export default function RecurringTasksPage() {
       const response = await apiRequest("PUT", `/api/recurring-tasks/${id}`, taskData);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: async (updatedTask, { id, taskData }) => {
+      // Remove existing schedules for this task
+      const existingSchedules = recurringSchedules.filter(schedule => schedule.recurringTaskId === id);
+      for (const schedule of existingSchedules) {
+        try {
+          await apiRequest("DELETE", `/api/recurring/schedule/${schedule.id}`);
+        } catch (error) {
+          console.error('Failed to remove existing schedule:', error);
+        }
+      }
+      
+      // Auto-create new schedules if days and time block are selected
+      if (taskData.daysOfWeek && taskData.daysOfWeek.length > 0 && taskData.timeBlock) {
+        for (const dayName of taskData.daysOfWeek) {
+          const dayIndex = DAYS_OF_WEEK.findIndex(day => 
+            day.toLowerCase() === dayName.toLowerCase()
+          );
+          
+          if (dayIndex !== -1) {
+            const scheduleData = {
+              recurringTaskId: id,
+              scheduleType: "weekly" as const,
+              dayOfWeek: dayIndex,
+              timeBlock: taskData.timeBlock,
+              isActive: true,
+            };
+            
+            try {
+              await apiRequest("POST", "/api/recurring/schedule", scheduleData);
+            } catch (error) {
+              console.error('Failed to create schedule for', dayName, ':', error);
+            }
+          }
+        }
+      }
+      
       queryClient.invalidateQueries({ queryKey: ['/api/recurring-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/recurring/schedule'] });
       toast({
         title: "Task updated!",
-        description: "Recurring task updated successfully.",
+        description: taskData.daysOfWeek && taskData.daysOfWeek.length > 0 && taskData.timeBlock 
+          ? `Task updated and scheduled for ${taskData.daysOfWeek.length} day(s)`
+          : "Recurring task updated successfully.",
       });
       setEditingTask(null);
       setIsCreateDialogOpen(false);
