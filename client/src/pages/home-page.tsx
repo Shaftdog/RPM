@@ -5,8 +5,9 @@ import TaskCaptureInterface from "@/components/task-capture-interface";
 import StrategicPlanningMatrix from "@/components/strategic-planning-matrix";
 import DailyWorksheet from "@/components/daily-worksheet";
 import RecurringTasksPage from "@/pages/recurring-tasks-page";
+import AnalyticsDashboard from "@/pages/analytics-dashboard";
 
-type TabType = "capture" | "planning" | "daily" | "recurring";
+type TabType = "capture" | "planning" | "daily" | "recurring" | "analytics";
 
 export default function HomePage() {
   const [location] = useLocation();
@@ -14,7 +15,7 @@ export default function HomePage() {
   // Determine initial tab from URL path
   const getInitialTab = (): TabType => {
     const path = location.replace("/", "");
-    if (path === "capture" || path === "planning" || path === "daily" || path === "recurring") {
+    if (path === "capture" || path === "planning" || path === "daily" || path === "recurring" || path === "analytics") {
       return path as TabType;
     }
     return "capture"; // default
@@ -37,6 +38,7 @@ export default function HomePage() {
         {activeTab === "planning" && <StrategicPlanningMatrix />}
         {activeTab === "daily" && <DailyWorksheet />}
         {activeTab === "recurring" && <RecurringTasksPage />}
+        {activeTab === "analytics" && <AnalyticsDashboard />}
       </main>
     </div>
   );

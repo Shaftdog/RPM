@@ -34,8 +34,8 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 interface HeaderNavigationProps {
-  activeTab: "capture" | "planning" | "daily" | "recurring";
-  onTabChange: (tab: "capture" | "planning" | "daily" | "recurring") => void;
+  activeTab: "capture" | "planning" | "daily" | "recurring" | "analytics";
+  onTabChange: (tab: "capture" | "planning" | "daily" | "recurring" | "analytics") => void;
 }
 
 export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavigationProps) {
@@ -170,6 +170,13 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
                 data-testid="tab-recurring"
               >
                 Recurring
+              </Button>
+              <Button
+                variant={activeTab === "analytics" ? "default" : "secondary"}
+                onClick={() => onTabChange("analytics")}
+                data-testid="tab-analytics"
+              >
+                Analytics
               </Button>
             </nav>
           </div>
