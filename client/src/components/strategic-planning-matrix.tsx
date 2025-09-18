@@ -193,6 +193,13 @@ export default function StrategicPlanningMatrix() {
                    task.timeHorizon || 'BACKLOG';
     const category = task.subcategory || 'Mental';
     
+    // For "Today" row, only show tasks where xDate (work date) is today
+    if (horizon === 'Today') {
+      if (!task.xDate || !isToday(new Date(task.xDate))) {
+        return; // Skip this task if it's not scheduled for today
+      }
+    }
+    
     if (matrix[horizon] && matrix[horizon][category]) {
       matrix[horizon][category].push(task);
     }
