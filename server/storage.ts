@@ -44,6 +44,7 @@ export interface IStorage {
     subcategory?: string;
     timeHorizon?: string;
     dueDate?: { gte?: Date; lte?: Date };
+    xDate?: { gte?: Date; lte?: Date };
   }): Promise<Task[]>;
   getTask(id: string, userId: string): Promise<Task | undefined>;
   createTask(task: InsertTask & { userId: string }): Promise<Task>;
@@ -123,6 +124,7 @@ export class DatabaseStorage implements IStorage {
     subcategory?: string;
     timeHorizon?: string;
     dueDate?: { gte?: Date; lte?: Date };
+    xDate?: { gte?: Date; lte?: Date };
   }): Promise<Task[]> {
     const conditions = [eq(tasks.userId, userId)];
     
@@ -144,6 +146,12 @@ export class DatabaseStorage implements IStorage {
       }
       if (filters.dueDate?.lte) {
         conditions.push(lte(tasks.dueDate, filters.dueDate.lte));
+      }
+      if (filters.xDate?.gte) {
+        conditions.push(gte(tasks.xDate, filters.xDate.gte));
+      }
+      if (filters.xDate?.lte) {
+        conditions.push(lte(tasks.xDate, filters.xDate.lte));
       }
     }
     

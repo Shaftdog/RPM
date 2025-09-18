@@ -74,6 +74,7 @@ export const tasks = pgTable("tasks", {
   description: text("description"),
   assignee: text("assignee").default("self"),
   dueDate: timestamp("due_date"),
+  xDate: timestamp("x_date"), // Work date - when you plan to work on it
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -262,6 +263,11 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
   updatedAt: true,
 }).extend({
   dueDate: z.union([z.date(), z.string().datetime().nullable(), z.null()]).optional().transform((val) => {
+    if (val === null || val === undefined) return null;
+    if (typeof val === 'string') return new Date(val);
+    return val;
+  }),
+  xDate: z.union([z.date(), z.string().datetime().nullable(), z.null()]).optional().transform((val) => {
     if (val === null || val === undefined) return null;
     if (typeof val === 'string') return new Date(val);
     return val;

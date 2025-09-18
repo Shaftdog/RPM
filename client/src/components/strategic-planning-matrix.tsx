@@ -41,6 +41,7 @@ interface Task {
   status: string;
   why?: string;
   dueDate?: string | null;
+  xDate?: string | null;
 }
 
 export default function StrategicPlanningMatrix() {
@@ -331,6 +332,11 @@ export default function StrategicPlanningMatrix() {
                                     {task.type} • {task.estimatedTime}h • {task.priority}
                                     {task.progress > 0 && ` • ${task.progress}%`}
                                   </div>
+                                  {task.xDate && (
+                                    <div className="text-xs mt-1 text-blue-600 font-medium">
+                                      Work: {format(new Date(task.xDate), "MMM dd")}
+                                    </div>
+                                  )}
                                   {task.dueDate && (
                                     <div className={cn(
                                       "text-xs mt-1",
@@ -590,6 +596,32 @@ export default function StrategicPlanningMatrix() {
                 </div>
               </div>
 
+              {/* X Date (Work Date) */}
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <CalendarIcon className="h-4 w-4 text-blue-600" />
+                  <Label className="text-sm font-medium">Work Date (X Date)</Label>
+                </div>
+                <div className="text-sm">
+                  {selectedTask.xDate ? (
+                    <div className="flex items-center gap-2 text-blue-600">
+                      <span>
+                        {format(new Date(selectedTask.xDate), "MMMM dd, yyyy")}
+                      </span>
+                      <span className="text-muted-foreground">
+                        ({isToday(new Date(selectedTask.xDate))
+                          ? "Work on Today"
+                          : isTomorrow(new Date(selectedTask.xDate))
+                          ? "Work on Tomorrow" 
+                          : `in ${formatDistanceToNowStrict(new Date(selectedTask.xDate))}`})
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">No work date set</span>
+                  )}
+                </div>
+              </div>
+
               {/* Due Date */}
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
@@ -797,6 +829,50 @@ export default function StrategicPlanningMatrix() {
                 </Select>
               </div>
 
+              {/* X Date (Work Date) */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Work Date (X Date)</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !editFormData.xDate && "text-muted-foreground",
+                        editFormData.xDate && "text-blue-600"
+                      )}
+                      data-testid="button-edit-x-date"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editFormData.xDate ? (
+                        format(new Date(editFormData.xDate), "PPP")
+                      ) : (
+                        <span>Pick a work date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={editFormData.xDate ? new Date(editFormData.xDate) : undefined}
+                      onSelect={(date) => updateEditField('xDate', date?.toISOString() || null)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {editFormData.xDate && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-full"
+                    onClick={() => updateEditField('xDate', null)}
+                    data-testid="button-clear-edit-x-date"
+                  >
+                    Clear work date
+                  </Button>
+                )}
+              </div>
+
               {/* Due Date */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Due Date</Label>
@@ -806,7 +882,8 @@ export default function StrategicPlanningMatrix() {
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !editFormData.dueDate && "text-muted-foreground"
+                        !editFormData.dueDate && "text-muted-foreground",
+                        editFormData.dueDate && isPast(new Date(editFormData.dueDate)) && !isToday(new Date(editFormData.dueDate)) && "text-red-600"
                       )}
                       data-testid="button-edit-due-date"
                     >
@@ -835,7 +912,7 @@ export default function StrategicPlanningMatrix() {
                     onClick={() => updateEditField('dueDate', null)}
                     data-testid="button-clear-edit-due-date"
                   >
-                    Clear date
+                    Clear due date
                   </Button>
                 )}
               </div>

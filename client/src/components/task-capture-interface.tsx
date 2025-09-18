@@ -26,6 +26,7 @@ interface ExtractedTask {
   why: string;
   description?: string;
   dueDate?: string;
+  xDate?: string;
   dependencies: string[];
   selected?: boolean;
 }
@@ -108,6 +109,7 @@ export default function TaskCaptureInterface() {
           why: task.why,
           description: task.description,
           dueDate: task.dueDate ? new Date(task.dueDate) : null,
+          xDate: task.xDate ? new Date(task.xDate) : null,
         }));
       
       return Promise.all(promises);
@@ -315,6 +317,54 @@ export default function TaskCaptureInterface() {
                         </div>
                       </div>
                       
+                      {/* X Date (Work Date) Row */}
+                      <div className="space-y-1">
+                        <label className="text-muted-foreground text-sm">Work Date (X Date)</label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal h-9 text-sm",
+                                !task.xDate && "text-muted-foreground",
+                                task.xDate && "text-blue-600"
+                              )}
+                              data-testid={`button-task-x-date-${index}`}
+                            >
+                              <CalendarIcon className="mr-2 h-3 w-3" />
+                              {task.xDate ? (
+                                <span>
+                                  {isToday(new Date(task.xDate))
+                                    ? "Work on Today"
+                                    : isTomorrow(new Date(task.xDate))
+                                    ? "Work on Tomorrow"
+                                    : format(new Date(task.xDate), "MMM dd, yyyy")}
+                                </span>
+                              ) : (
+                                <span>No work date</span>
+                              )}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={task.xDate ? new Date(task.xDate) : undefined}
+                              onSelect={(date) => handleTaskUpdate(index, 'xDate', date?.toISOString())}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        {task.xDate && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs w-full"
+                            onClick={() => handleTaskUpdate(index, 'xDate', null)}
+                          >
+                            Clear work date
+                          </Button>
+                        )}
+                      </div>
+                      
                       {/* Due Date Row */}
                       <div className="space-y-1">
                         <label className="text-muted-foreground text-sm">Due Date</label>
@@ -324,7 +374,8 @@ export default function TaskCaptureInterface() {
                               variant="outline"
                               className={cn(
                                 "w-full justify-start text-left font-normal h-9 text-sm",
-                                !task.dueDate && "text-muted-foreground"
+                                !task.dueDate && "text-muted-foreground",
+                                task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && "text-red-600"
                               )}
                               data-testid={`button-task-due-date-${index}`}
                             >
@@ -361,7 +412,7 @@ export default function TaskCaptureInterface() {
                             className="h-6 text-xs w-full"
                             onClick={() => handleTaskUpdate(index, 'dueDate', null)}
                           >
-                            Clear date
+                            Clear due date
                           </Button>
                         )}
                       </div>

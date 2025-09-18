@@ -48,6 +48,7 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
     estimatedTime: 1,
     description: "",
     dueDate: null as Date | null,
+    xDate: null as Date | null,
   });
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -78,6 +79,7 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
         estimatedTime: 1,
         description: "",
         dueDate: null,
+        xDate: null,
       });
     },
     onError: (error: any) => {
@@ -122,6 +124,7 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
       why: "Quick add task",
       dependencies: [],
       dueDate: quickTaskData.dueDate ? quickTaskData.dueDate.toISOString() : null,
+      xDate: quickTaskData.xDate ? quickTaskData.xDate.toISOString() : null,
     };
 
     createTaskMutation.mutate(taskToCreate);
@@ -262,6 +265,49 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
             </div>
 
             <div className="grid gap-2">
+              <Label htmlFor="task-x-date">Work Date (X Date) (optional)</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !quickTaskData.xDate && "text-muted-foreground",
+                      quickTaskData.xDate && "text-blue-600"
+                    )}
+                    data-testid="button-x-date"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {quickTaskData.xDate ? (
+                      format(quickTaskData.xDate, "PPP")
+                    ) : (
+                      <span>Pick a work date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={quickTaskData.xDate || undefined}
+                    onSelect={(date) => setQuickTaskData(prev => ({ ...prev, xDate: date || null }))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              {quickTaskData.xDate && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-full"
+                  onClick={() => setQuickTaskData(prev => ({ ...prev, xDate: null }))}
+                  data-testid="button-clear-x-date"
+                >
+                  Clear work date
+                </Button>
+              )}
+            </div>
+
+            <div className="grid gap-2">
               <Label htmlFor="task-due-date">Due Date (optional)</Label>
               <Popover>
                 <PopoverTrigger asChild>
@@ -298,7 +344,7 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
                   onClick={() => setQuickTaskData(prev => ({ ...prev, dueDate: null }))}
                   data-testid="button-clear-due-date"
                 >
-                  Clear date
+                  Clear due date
                 </Button>
               )}
             </div>

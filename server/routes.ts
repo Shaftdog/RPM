@@ -142,6 +142,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dueDateGte = parseDate(req.query.dueDateGte);
       const dueDateLte = parseDate(req.query.dueDateLte);
       const singleDueDate = parseDate(req.query.dueDate);
+      const xDateGte = parseDate(req.query.xDateGte);
+      const xDateLte = parseDate(req.query.xDateLte);
+      const singleXDate = parseDate(req.query.xDate);
 
       const filters = {
         status: req.query.status ? req.query.status.split(',') : undefined,
@@ -158,6 +161,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ? {
                 gte: singleDueDate,
                 lte: singleDueDate,
+              }
+            : undefined,
+        xDate:
+          xDateGte || xDateLte
+            ? {
+                gte: xDateGte,
+                lte: xDateLte,
+              }
+            : singleXDate
+            ? {
+                gte: singleXDate,
+                lte: singleXDate,
               }
             : undefined,
       };
