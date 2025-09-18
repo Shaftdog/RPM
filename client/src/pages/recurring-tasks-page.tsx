@@ -459,6 +459,7 @@ export default function RecurringTasksPage() {
     
     createScheduleMutation.mutate(scheduleData);
     setDraggedTask(null);
+    setIsDragging(false);
   };
 
   const TaskCard = ({ task }: { task: RecurringTask }) => (
