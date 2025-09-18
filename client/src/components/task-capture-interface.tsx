@@ -8,8 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Send, Plus, CheckCircle } from "lucide-react";
+import { Upload, Send, Plus, CheckCircle, CalendarIcon } from "lucide-react";
+import { format, isPast, isToday, isTomorrow } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface ExtractedTask {
   name: string;
@@ -309,6 +313,57 @@ export default function TaskCaptureInterface() {
                             </Select>
                           </div>
                         </div>
+                      </div>
+                      
+                      {/* Due Date Row */}
+                      <div className="space-y-1">
+                        <label className="text-muted-foreground text-sm">Due Date</label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal h-9 text-sm",
+                                !task.dueDate && "text-muted-foreground"
+                              )}
+                              data-testid={`button-task-due-date-${index}`}
+                            >
+                              <CalendarIcon className="mr-2 h-3 w-3" />
+                              {task.dueDate ? (
+                                <span className={cn(
+                                  task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && "text-red-500"
+                                )}>
+                                  {isToday(new Date(task.dueDate))
+                                    ? "Due Today"
+                                    : isTomorrow(new Date(task.dueDate))
+                                    ? "Due Tomorrow"
+                                    : isPast(new Date(task.dueDate))
+                                    ? `Overdue: ${format(new Date(task.dueDate), "MMM dd, yyyy")}`
+                                    : format(new Date(task.dueDate), "MMM dd, yyyy")}
+                                </span>
+                              ) : (
+                                <span>No due date</span>
+                              )}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={task.dueDate ? new Date(task.dueDate) : undefined}
+                              onSelect={(date) => handleTaskUpdate(index, 'dueDate', date?.toISOString())}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        {task.dueDate && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs w-full"
+                            onClick={() => handleTaskUpdate(index, 'dueDate', null)}
+                          >
+                            Clear date
+                          </Button>
+                        )}
                       </div>
                       
                       <div className="grid grid-cols-3 gap-3 text-sm">

@@ -24,10 +24,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, User, LogOut } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Plus, User, LogOut, CalendarIcon } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface HeaderNavigationProps {
   activeTab: "capture" | "planning" | "daily" | "recurring";
@@ -43,6 +47,7 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
     priority: "Medium",
     estimatedTime: 1,
     description: "",
+    dueDate: null as Date | null,
   });
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -72,6 +77,7 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
         priority: "Medium",
         estimatedTime: 1,
         description: "",
+        dueDate: null,
       });
     },
     onError: (error: any) => {
@@ -115,6 +121,7 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
       timeHorizon: "Week",
       why: "Quick add task",
       dependencies: [],
+      dueDate: quickTaskData.dueDate ? quickTaskData.dueDate.toISOString() : null,
     };
 
     createTaskMutation.mutate(taskToCreate);
@@ -252,6 +259,48 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
                 onChange={(e) => setQuickTaskData(prev => ({ ...prev, estimatedTime: parseFloat(e.target.value) || 1 }))}
                 data-testid="input-estimated-time"
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="task-due-date">Due Date (optional)</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !quickTaskData.dueDate && "text-muted-foreground"
+                    )}
+                    data-testid="button-due-date"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {quickTaskData.dueDate ? (
+                      format(quickTaskData.dueDate, "PPP")
+                    ) : (
+                      <span>Pick a due date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={quickTaskData.dueDate || undefined}
+                    onSelect={(date) => setQuickTaskData(prev => ({ ...prev, dueDate: date }))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              {quickTaskData.dueDate && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-full"
+                  onClick={() => setQuickTaskData(prev => ({ ...prev, dueDate: null }))}
+                  data-testid="button-clear-due-date"
+                >
+                  Clear date
+                </Button>
+              )}
             </div>
 
             <div className="grid gap-2">

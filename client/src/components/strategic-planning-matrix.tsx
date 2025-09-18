@@ -21,8 +21,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle } from "lucide-react";
+import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon } from "lucide-react";
+import { format, isPast, isToday, isTomorrow, formatDistanceToNowStrict } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface Task {
   id: string;
@@ -36,6 +40,7 @@ interface Task {
   progress: number;
   status: string;
   why?: string;
+  dueDate?: string | null;
 }
 
 export default function StrategicPlanningMatrix() {
@@ -326,6 +331,22 @@ export default function StrategicPlanningMatrix() {
                                     {task.type} • {task.estimatedTime}h • {task.priority}
                                     {task.progress > 0 && ` • ${task.progress}%`}
                                   </div>
+                                  {task.dueDate && (
+                                    <div className={cn(
+                                      "text-xs mt-1",
+                                      isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && "text-red-500 font-semibold",
+                                      isToday(new Date(task.dueDate)) && "text-orange-500 font-semibold",
+                                      isTomorrow(new Date(task.dueDate)) && "text-blue-500"
+                                    )}>
+                                      {isToday(new Date(task.dueDate))
+                                        ? "Due Today"
+                                        : isTomorrow(new Date(task.dueDate))
+                                        ? "Due Tomorrow"
+                                        : isPast(new Date(task.dueDate))
+                                        ? `Overdue`
+                                        : `Due ${format(new Date(task.dueDate), "MMM dd")}`}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -569,6 +590,37 @@ export default function StrategicPlanningMatrix() {
                 </div>
               </div>
 
+              {/* Due Date */}
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-sm font-medium">Due Date</Label>
+                </div>
+                <div className="text-sm">
+                  {selectedTask.dueDate ? (
+                    <div className={cn(
+                      "flex items-center gap-2",
+                      isPast(new Date(selectedTask.dueDate)) && !isToday(new Date(selectedTask.dueDate)) && "text-red-500 font-semibold"
+                    )}>
+                      <span>
+                        {format(new Date(selectedTask.dueDate), "MMMM dd, yyyy")}
+                      </span>
+                      <span className="text-muted-foreground">
+                        ({isToday(new Date(selectedTask.dueDate))
+                          ? "Due Today"
+                          : isTomorrow(new Date(selectedTask.dueDate))
+                          ? "Due Tomorrow" 
+                          : isPast(new Date(selectedTask.dueDate))
+                          ? "Overdue"
+                          : `in ${formatDistanceToNowStrict(new Date(selectedTask.dueDate))}`})
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">No due date set</span>
+                  )}
+                </div>
+              </div>
+
               {/* Why */}
               {selectedTask.why && (
                 <div className="space-y-2">
@@ -743,6 +795,49 @@ export default function StrategicPlanningMatrix() {
                     <SelectItem value="Production">Production</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Due Date */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Due Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !editFormData.dueDate && "text-muted-foreground"
+                      )}
+                      data-testid="button-edit-due-date"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editFormData.dueDate ? (
+                        format(new Date(editFormData.dueDate), "PPP")
+                      ) : (
+                        <span>Pick a due date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={editFormData.dueDate ? new Date(editFormData.dueDate) : undefined}
+                      onSelect={(date) => updateEditField('dueDate', date?.toISOString() || null)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {editFormData.dueDate && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-full"
+                    onClick={() => updateEditField('dueDate', null)}
+                    data-testid="button-clear-edit-due-date"
+                  >
+                    Clear date
+                  </Button>
+                )}
               </div>
 
               {/* Progress */}
