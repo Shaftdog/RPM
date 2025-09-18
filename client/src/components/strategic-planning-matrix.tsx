@@ -187,16 +187,17 @@ export default function StrategicPlanningMatrix() {
 
   // Populate matrix with tasks (exclude completed tasks)
   tasks.filter(task => task.status !== 'completed').forEach(task => {
-    const horizon = task.timeHorizon === '1 Year' ? '1 Year' : 
-                   task.timeHorizon === '5 Year' ? '5 Year' : 
-                   task.timeHorizon === '10 Year' ? '10 Year' : 
-                   task.timeHorizon || 'BACKLOG';
+    let horizon = task.timeHorizon === '1 Year' ? '1 Year' : 
+                  task.timeHorizon === '5 Year' ? '5 Year' : 
+                  task.timeHorizon === '10 Year' ? '10 Year' : 
+                  task.timeHorizon || 'BACKLOG';
     const category = task.subcategory || 'Mental';
     
     // For "Today" row, only show tasks where xDate (work date) is today
+    // If not today, move to BACKLOG instead of hiding completely
     if (horizon === 'Today') {
       if (!task.xDate || !isToday(new Date(task.xDate))) {
-        return; // Skip this task if it's not scheduled for today
+        horizon = 'BACKLOG'; // Move to backlog instead of hiding
       }
     }
     
