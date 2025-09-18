@@ -521,7 +521,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log('Processing image file...');
             const base64Image = fileBuffer.toString('base64');
             console.log('Image converted to base64, length:', base64Image.length);
-            const imageTasks = await analyzeImage(base64Image);
+            const imageTasks = await analyzeImage(base64Image, mimeType);
             console.log('OpenAI returned tasks:', imageTasks.length, imageTasks);
             // Convert regular tasks to recurring tasks format
             const recurringTasks = imageTasks.map(task => ({

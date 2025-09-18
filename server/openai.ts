@@ -308,8 +308,11 @@ export async function processAICommand(
   }
 }
 
-export async function analyzeImage(base64Image: string): Promise<ExtractedTask[]> {
+export async function analyzeImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<ExtractedTask[]> {
   try {
+    // Extract the image format from the MIME type (e.g., 'image/png' -> 'png')
+    const imageFormat = mimeType.replace('image/', '');
+    
     const response = await openai.chat.completions.create({
       model: "gpt-5",
       messages: [
@@ -343,7 +346,7 @@ export async function analyzeImage(base64Image: string): Promise<ExtractedTask[]
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`
+                url: `data:${mimeType};base64,${base64Image}`
               }
             }
           ],
