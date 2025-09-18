@@ -399,20 +399,30 @@ export default function RecurringTasksPage() {
   };
 
   const handleDragStart = (task: RecurringTask, e: React.DragEvent) => {
+    console.log('Drag started for task:', task.taskName);
     setDraggedTask(task);
     setIsDragging(true);
     // Store task data in dataTransfer to work across overlay boundaries
     e.dataTransfer.setData('application/json', JSON.stringify(task));
+    e.dataTransfer.setData('text/plain', JSON.stringify(task)); // Add fallback format
     e.dataTransfer.effectAllowed = 'move';
+    
+    // Close the overlay after a small delay to allow the drag to properly start
+    setTimeout(() => {
+      setIsTaskLibraryOpen(false);
+      setIsDragging(false);
+    }, 100);
   };
 
   const handleDragEnd = () => {
+    console.log('Drag ended');
     setDraggedTask(null);
     setIsDragging(false);
   };
 
   const handleDrop = (dayIndex: number, timeBlock: string, e: React.DragEvent) => {
     e.preventDefault();
+    console.log('Drop event triggered on:', dayIndex, timeBlock);
     
     let taskToSchedule = draggedTask;
     
@@ -420,7 +430,8 @@ export default function RecurringTasksPage() {
     // try to get task data from dataTransfer
     if (!taskToSchedule) {
       try {
-        const taskData = e.dataTransfer.getData('application/json');
+        const taskData = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
+        console.log('Parsing task data from dataTransfer:', taskData);
         if (taskData) {
           taskToSchedule = JSON.parse(taskData);
         }
@@ -1378,11 +1389,6 @@ export default function RecurringTasksPage() {
         <SheetContent 
           side="left" 
           className="w-80 sm:w-96"
-          style={{ 
-            pointerEvents: isDragging ? 'none' : 'auto',
-            opacity: isDragging ? 0.3 : 1,
-            transition: 'opacity 0.2s'
-          }}
         >
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
