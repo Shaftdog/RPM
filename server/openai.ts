@@ -102,11 +102,22 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
     { name: "FLEXIBLE BLOCK", start: "16:00", end: "17:00" }
   ];
   
+  // Get current day of week for recurring task filtering
+  const dayOfWeek = new Date().getDay(); // 0=Sunday, 1=Monday, etc.
+  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const currentDayFull = dayNames[dayOfWeek];
+  
+  // Filter recurring tasks for today
+  const todaysRecurringTasks = recurringTasks.filter(rt => 
+    rt.daysOfWeek && rt.daysOfWeek.includes(currentDayFull)
+  );
+  
   // Distribute tasks by priority across time blocks
   const availableTasks = [...tasks];
   
   timeBlocks.forEach((block) => {
-    let quartiles: Array<{
+    // Initialize 4 quartiles for each time block
+    const quartiles: Array<{
       task: {
         id: string;
         name: string;
@@ -118,43 +129,87 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
       allocatedTime: string;
     }> = [];
     
-    // Assign tasks based on block type and priority
-    let targetTask = null;
-    if (block.name === "CHIEF PROJECT" && availableTasks.some(t => t.priority === "High")) {
-      targetTask = availableTasks.find(t => t.priority === "High");
-    } else if (block.name === "PRODUCTION WORK" && availableTasks.some(t => t.priority === "Medium")) {
-      targetTask = availableTasks.find(t => t.priority === "Medium");
-    } else if (block.name === "FLEXIBLE BLOCK" && availableTasks.some(t => t.priority === "Low")) {
-      targetTask = availableTasks.find(t => t.priority === "Low");
-    } else if (availableTasks.length > 0) {
-      targetTask = availableTasks[0]; // Any remaining task
-    }
+    // Calculate quarter time slots within the block
+    const blockStartMinutes = timeToMinutes(block.start);
+    const blockEndMinutes = timeToMinutes(block.end);
+    const blockDuration = blockEndMinutes - blockStartMinutes;
+    const quarterDuration = blockDuration / 4;
     
-    if (targetTask) {
-      quartiles.push({
-        task: {
-          id: targetTask.id,
-          name: targetTask.name,
-          priority: targetTask.priority,
-          estimatedTime: targetTask.estimatedTime || "1.00"
-        },
-        start: block.start,
-        end: block.end,
-        allocatedTime: "1.00"
-      });
-      
-      // Remove assigned task from available tasks
-      const taskIndex = availableTasks.findIndex(t => t.id === targetTask.id);
-      if (taskIndex > -1) {
-        availableTasks.splice(taskIndex, 1);
+    // First, place recurring tasks in their preferred quarters
+    // Handle both formats: "PHYSICAL MENTAL" and "PHYSICAL MENTAL (7-9AM)"
+    todaysRecurringTasks.forEach(recurringTask => {
+      const blockMatches = recurringTask.timeBlock === block.name || 
+                          recurringTask.timeBlock.startsWith(block.name + " (");
+      if (blockMatches && recurringTask.quarter) {
+        const quarterIndex = recurringTask.quarter - 1; // Convert 1-4 to 0-3
+        if (quarterIndex >= 0 && quarterIndex < 4 && !quartiles[quarterIndex]) {
+          const quarterStart = blockStartMinutes + (quarterIndex * quarterDuration);
+          const quarterEnd = quarterStart + quarterDuration;
+          
+          quartiles[quarterIndex] = {
+            task: {
+              id: recurringTask.id || `recurring_${recurringTask.taskName}`,
+              name: recurringTask.taskName,
+              priority: recurringTask.priority || "Medium",
+              estimatedTime: (recurringTask.durationMinutes / 60).toFixed(2)
+            },
+            start: minutesToTime(quarterStart),
+            end: minutesToTime(quarterEnd),
+            allocatedTime: (quarterDuration / 60).toFixed(2)
+          };
+        }
+      }
+    });
+    
+    // Then fill remaining quarters with available tasks
+    for (let i = 0; i < 4; i++) {
+      if (!quartiles[i] && availableTasks.length > 0) {
+        let targetTask = null;
+        
+        // Assign based on block type and priority
+        if (block.name === "CHIEF PROJECT" && availableTasks.some(t => t.priority === "High")) {
+          targetTask = availableTasks.find(t => t.priority === "High");
+        } else if (block.name === "PRODUCTION WORK" && availableTasks.some(t => t.priority === "Medium")) {
+          targetTask = availableTasks.find(t => t.priority === "Medium");
+        } else if (block.name === "FLEXIBLE BLOCK" && availableTasks.some(t => t.priority === "Low")) {
+          targetTask = availableTasks.find(t => t.priority === "Low");
+        } else if (availableTasks.length > 0) {
+          targetTask = availableTasks[0]; // Any remaining task
+        }
+        
+        if (targetTask) {
+          const quarterStart = blockStartMinutes + (i * quarterDuration);
+          const quarterEnd = quarterStart + quarterDuration;
+          
+          quartiles[i] = {
+            task: {
+              id: targetTask.id,
+              name: targetTask.name,
+              priority: targetTask.priority,
+              estimatedTime: targetTask.estimatedTime || "0.25"
+            },
+            start: minutesToTime(quarterStart),
+            end: minutesToTime(quarterEnd),
+            allocatedTime: (quarterDuration / 60).toFixed(2)
+          };
+          
+          // Remove assigned task from available tasks
+          const taskIndex = availableTasks.findIndex(t => t.id === targetTask.id);
+          if (taskIndex > -1) {
+            availableTasks.splice(taskIndex, 1);
+          }
+        }
       }
     }
+    
+    // Filter out empty quartiles
+    const filledQuartiles = quartiles.filter(q => q !== undefined);
     
     schedule.push({
       timeBlock: block.name,
       start: block.start,
       end: block.end,
-      quartiles
+      quartiles: filledQuartiles
     });
   });
   
@@ -163,6 +218,18 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
     source: "local_fallback",
     totalTasks: tasks.length
   };
+}
+
+// Helper functions for time calculations
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+function minutesToTime(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
 
 export async function generateDailySchedule(
