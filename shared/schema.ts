@@ -69,6 +69,8 @@ export const tasks = pgTable("tasks", {
   priority: priorityEnum("priority").notNull().default("Medium"),
   estimatedTime: decimal("estimated_time", { precision: 5, scale: 2 }), // hours
   actualTime: decimal("actual_time", { precision: 5, scale: 2 }), // hours
+  caloriesIntake: decimal("calories_intake", { precision: 8, scale: 2 }), // calories gained from task completion
+  caloriesExpenditure: decimal("calories_expenditure", { precision: 8, scale: 2 }), // calories burned during task
   progress: integer("progress").default(0), // 0-100
   why: text("why"), // rationale
   description: text("description"),
@@ -271,6 +273,16 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
     if (val === null || val === undefined) return null;
     if (typeof val === 'string') return new Date(val);
     return val;
+  }),
+  caloriesIntake: z.union([z.number(), z.string().optional(), z.null()]).optional().transform((val) => {
+    if (val === null || val === undefined || val === '') return null;
+    const num = typeof val === 'string' ? parseFloat(val) : val;
+    return isNaN(num) ? null : num;
+  }),
+  caloriesExpenditure: z.union([z.number(), z.string().optional(), z.null()]).optional().transform((val) => {
+    if (val === null || val === undefined || val === '') return null;
+    const num = typeof val === 'string' ? parseFloat(val) : val;
+    return isNaN(num) ? null : num;
   })
 });
 

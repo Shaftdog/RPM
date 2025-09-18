@@ -23,6 +23,8 @@ interface ExtractedTask {
   timeHorizon: string;
   priority: "High" | "Medium" | "Low";
   estimatedTime: number;
+  caloriesIntake?: number;
+  caloriesExpenditure?: number;
   why: string;
   description?: string;
   dueDate?: string;
@@ -106,6 +108,8 @@ export default function TaskCaptureInterface() {
           timeHorizon: task.timeHorizon,
           priority: task.priority,
           estimatedTime: task.estimatedTime?.toString(),
+          caloriesIntake: task.caloriesIntake?.toString(),
+          caloriesExpenditure: task.caloriesExpenditure?.toString(),
           why: task.why,
           description: task.description,
           dueDate: task.dueDate ? new Date(task.dueDate) : null,
@@ -460,6 +464,35 @@ export default function TaskCaptureInterface() {
                               <SelectItem value="10 Year">10 Year</SelectItem>
                             </SelectContent>
                           </Select>
+                        </div>
+                      </div>
+                      
+                      {/* Calorie fields */}
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <label className="text-muted-foreground">Calorie Intake</label>
+                          <Input
+                            type="number"
+                            value={task.caloriesIntake || ""}
+                            onChange={(e) => handleTaskUpdate(index, 'caloriesIntake', e.target.value ? parseFloat(e.target.value) : undefined)}
+                            step="1"
+                            min="0"
+                            placeholder="e.g., 300"
+                            data-testid={`input-calorie-intake-${index}`}
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="text-muted-foreground">Calorie Expenditure</label>
+                          <Input
+                            type="number"
+                            value={task.caloriesExpenditure || ""}
+                            onChange={(e) => handleTaskUpdate(index, 'caloriesExpenditure', e.target.value ? parseFloat(e.target.value) : undefined)}
+                            step="1"
+                            min="0"
+                            placeholder="e.g., 150"
+                            data-testid={`input-calorie-expenditure-${index}`}
+                          />
                         </div>
                       </div>
                       

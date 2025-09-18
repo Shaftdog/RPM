@@ -46,6 +46,8 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
     category: "Personal",
     priority: "Medium",
     estimatedTime: 1,
+    caloriesIntake: undefined as number | undefined,
+    caloriesExpenditure: undefined as number | undefined,
     description: "",
     dueDate: null as Date | null,
     xDate: null as Date | null,
@@ -77,6 +79,8 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
         category: "Personal", 
         priority: "Medium",
         estimatedTime: 1,
+        caloriesIntake: undefined,
+        caloriesExpenditure: undefined,
         description: "",
         dueDate: null,
         xDate: null,
@@ -262,6 +266,35 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
                 onChange={(e) => setQuickTaskData(prev => ({ ...prev, estimatedTime: parseFloat(e.target.value) || 1 }))}
                 data-testid="input-estimated-time"
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-2">
+                <Label htmlFor="calorie-intake">Calorie Intake (optional)</Label>
+                <Input
+                  id="calorie-intake"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={quickTaskData.caloriesIntake || ""}
+                  onChange={(e) => setQuickTaskData(prev => ({ ...prev, caloriesIntake: e.target.value ? parseFloat(e.target.value) : undefined }))}
+                  placeholder="e.g., 300"
+                  data-testid="input-calorie-intake"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="calorie-expenditure">Calorie Expenditure (optional)</Label>
+                <Input
+                  id="calorie-expenditure"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={quickTaskData.caloriesExpenditure || ""}
+                  onChange={(e) => setQuickTaskData(prev => ({ ...prev, caloriesExpenditure: e.target.value ? parseFloat(e.target.value) : undefined }))}
+                  placeholder="e.g., 150"
+                  data-testid="input-calorie-expenditure"
+                />
+              </div>
             </div>
 
             <div className="grid gap-2">

@@ -40,8 +40,6 @@ export default function DailyWorksheet() {
   const [currentTime, setCurrentTime] = useState("2:30:00");
   const [totalTime] = useState("6:45:00");
   const [breakTimer] = useState("4:30:00");
-  const [caloricIntake, setCaloricIntake] = useState(2200);
-  const [caloricExpenditure, setCaloricExpenditure] = useState(-1000);
   const baseExpenditure = -2300; // Base Metabolic Rate (constant)
   const [quickTask, setQuickTask] = useState("");
   const [aiMessage, setAiMessage] = useState("");
@@ -55,6 +53,24 @@ export default function DailyWorksheet() {
   const { data: tasks = [] } = useQuery<any[]>({
     queryKey: ['/api/tasks'],
   });
+
+  // Get completed tasks for the selected date to calculate calories
+  const completedTasks = tasks.filter(task => 
+    task.status === 'completed' && 
+    task.xDate && 
+    new Date(task.xDate).toDateString() === new Date(selectedDate).toDateString()
+  );
+
+  // Calculate total calories from completed tasks
+  const calculatedCaloricIntake = completedTasks.reduce((total, task) => {
+    const intake = parseFloat(task.caloriesIntake) || 0;
+    return total + intake;
+  }, 0);
+
+  const calculatedCaloricExpenditure = completedTasks.reduce((total, task) => {
+    const expenditure = parseFloat(task.caloriesExpenditure) || 0;
+    return total - expenditure; // Keep expenditure negative
+  }, 0);
 
   const generateScheduleMutation = useMutation({
     mutationFn: async (date: string) => {
@@ -153,13 +169,7 @@ export default function DailyWorksheet() {
     });
   };
 
-  const handleCalorieUpdate = (type: 'intake' | 'expenditure', delta: number) => {
-    if (type === 'intake') {
-      setCaloricIntake(prev => Math.max(0, prev + delta));
-    } else {
-      setCaloricExpenditure(prev => Math.min(0, prev - delta)); // Keep expenditure negative or zero
-    }
-  };
+  // Removed handleCalorieUpdate - calories now calculated from completed tasks
 
   const handleQuickTaskSubmit = () => {
     if (!quickTask.trim()) return;
@@ -222,9 +232,9 @@ export default function DailyWorksheet() {
               <div className="flex items-center space-x-2">
                 <span className="text-sm text-muted-foreground">Net Cal:</span>
                 <span className={`font-medium min-w-[3rem] text-center ${
-                  (caloricIntake + caloricExpenditure + baseExpenditure) >= 0 ? 'text-green-600' : 'text-red-600'
+                  (calculatedCaloricIntake + calculatedCaloricExpenditure + baseExpenditure) >= 0 ? 'text-green-600' : 'text-red-600'
                 }`} data-testid="text-net-calories">
-                  {caloricIntake + caloricExpenditure + baseExpenditure}
+                  {calculatedCaloricIntake + calculatedCaloricExpenditure + baseExpenditure}
                 </span>
               </div>
               <Button onClick={handleTimerToggle} data-testid="button-timer-toggle">
@@ -361,52 +371,16 @@ export default function DailyWorksheet() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Caloric Intake:</span>
-                <div className="flex items-center space-x-1">
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={() => handleCalorieUpdate('intake', -100)}
-                    className="h-6 w-6 p-0"
-                    data-testid="button-intake-decrease"
-                  >
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                  <span className="text-sm font-medium text-green-600 min-w-[3rem] text-right" data-testid="text-caloric-intake">{caloricIntake}</span>
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={() => handleCalorieUpdate('intake', 100)}
-                    className="h-6 w-6 p-0"
-                    data-testid="button-intake-increase"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
+                <span className="text-sm text-muted-foreground">Caloric Intake (from completed tasks):</span>
+                <span className="text-sm font-medium text-green-600 min-w-[3rem] text-right" data-testid="text-caloric-intake">
+                  {calculatedCaloricIntake}
+                </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Caloric Expenditure:</span>
-                <div className="flex items-center space-x-1">
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={() => handleCalorieUpdate('expenditure', -100)}
-                    className="h-6 w-6 p-0"
-                    data-testid="button-expenditure-decrease"
-                  >
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                  <span className="text-sm font-medium text-orange-600 min-w-[3rem] text-right" data-testid="text-caloric-expenditure">{caloricExpenditure}</span>
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={() => handleCalorieUpdate('expenditure', 100)}
-                    className="h-6 w-6 p-0"
-                    data-testid="button-expenditure-increase"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
+                <span className="text-sm text-muted-foreground">Caloric Expenditure (from completed tasks):</span>
+                <span className="text-sm font-medium text-orange-600 min-w-[3rem] text-right" data-testid="text-caloric-expenditure">
+                  {calculatedCaloricExpenditure}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Base Expenditure:</span>
@@ -416,8 +390,8 @@ export default function DailyWorksheet() {
               <div className="flex justify-between font-medium">
                 <span className="text-sm text-foreground">Net Calories:</span>
                 <span className={`text-sm ${
-                  (caloricIntake + caloricExpenditure + baseExpenditure) >= 0 ? 'text-green-600' : 'text-red-600'
-                }`} data-testid="text-net-calories-summary">{caloricIntake + caloricExpenditure + baseExpenditure}</span>
+                  (calculatedCaloricIntake + calculatedCaloricExpenditure + baseExpenditure) >= 0 ? 'text-green-600' : 'text-red-600'
+                }`} data-testid="text-net-calories-summary">{calculatedCaloricIntake + calculatedCaloricExpenditure + baseExpenditure}</span>
               </div>
             </CardContent>
           </Card>

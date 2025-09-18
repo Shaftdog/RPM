@@ -37,6 +37,8 @@ interface Task {
   timeHorizon: string;
   priority: "High" | "Medium" | "Low";
   estimatedTime: string;
+  caloriesIntake?: string;
+  caloriesExpenditure?: string;
   progress: number;
   status: string;
   why?: string;
@@ -777,6 +779,34 @@ export default function StrategicPlanningMatrix() {
                     value={editFormData.estimatedTime}
                     onChange={(e) => updateEditField('estimatedTime', e.target.value)}
                     data-testid="input-edit-estimated-time"
+                  />
+                </div>
+              </div>
+
+              {/* Calorie Fields */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Calorie Intake</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editFormData.caloriesIntake || ""}
+                    onChange={(e) => updateEditField('caloriesIntake', e.target.value || null)}
+                    placeholder="e.g., 300"
+                    data-testid="input-edit-calorie-intake"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Calorie Expenditure</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editFormData.caloriesExpenditure || ""}
+                    onChange={(e) => updateEditField('caloriesExpenditure', e.target.value || null)}
+                    placeholder="e.g., 150"
+                    data-testid="input-edit-calorie-expenditure"
                   />
                 </div>
               </div>
