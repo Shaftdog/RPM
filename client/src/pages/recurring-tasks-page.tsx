@@ -34,6 +34,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -46,8 +47,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { RecurringTask, RecurringSchedule, InsertRecurringTask } from "@shared/schema";
 import { insertRecurringTaskSchema } from "@shared/schema";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
 
 // Types imported from @shared/schema
 
@@ -98,10 +107,13 @@ export default function RecurringTasksPage() {
   const [draggedTask, setDraggedTask] = useState<RecurringTask | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const isMobile = useIsMobile();
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
     const saved = localStorage.getItem('recurring-tasks-panel-collapsed');
-    return saved ? JSON.parse(saved) : false;
+    return saved ? JSON.parse(saved) : isMobile;
   });
+  const [selectedTaskForScheduling, setSelectedTaskForScheduling] = useState<RecurringTask | null>(null);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("library");
   
   // AI Assistant state
@@ -116,10 +128,17 @@ export default function RecurringTasksPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Persist panel collapse state to localStorage
+  // Persist panel collapse state to localStorage and respond to mobile changes
   useEffect(() => {
     localStorage.setItem('recurring-tasks-panel-collapsed', JSON.stringify(isPanelCollapsed));
   }, [isPanelCollapsed]);
+
+  // Auto-collapse panel on mobile breakpoint change
+  useEffect(() => {
+    if (isMobile && !isPanelCollapsed) {
+      setIsPanelCollapsed(true);
+    }
+  }, [isMobile]);
 
   // Fetch recurring tasks
   const { data: recurringTasks = [], isLoading: tasksLoading, error: tasksError } = useQuery<RecurringTask[]>({
@@ -425,6 +444,21 @@ export default function RecurringTasksPage() {
     setIsDragging(false);
   };
 
+  // Mobile scheduling function
+  const handleMobileSchedule = (task: RecurringTask, dayIndex: number, timeBlock: string) => {
+    const scheduleData = {
+      recurringTaskId: task.id,
+      scheduleType: "weekly" as const,
+      dayOfWeek: dayIndex,
+      timeBlock: timeBlock,
+      isActive: true,
+    };
+    
+    createScheduleMutation.mutate(scheduleData);
+    setIsScheduleModalOpen(false);
+    setSelectedTaskForScheduling(null);
+  };
+
   const handleDrop = (dayIndex: number, timeBlock: string, e: React.DragEvent) => {
     e.preventDefault();
     console.log('Drop event triggered on:', dayIndex, timeBlock);
@@ -462,69 +496,118 @@ export default function RecurringTasksPage() {
     setIsDragging(false);
   };
 
-  const TaskCard = ({ task }: { task: RecurringTask }) => (
-    <Card 
-      className={`mb-2 cursor-grab active:cursor-grabbing border-l-4 border-l-primary transition-opacity ${
-        draggedTask?.id === task.id ? 'opacity-50' : 'opacity-100'
-      }`}
-      draggable
-      onDragStart={(e) => handleDragStart(task, e)}
-      onDragEnd={handleDragEnd}
-      data-testid={`task-card-${task.id}`}
-    >
-      <CardContent className="p-3">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <GripVertical className="h-3 w-3 text-muted-foreground" />
-              <span className="font-medium text-sm">{task.taskName}</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline" className="text-xs">
-                {task.taskType}
-              </Badge>
-              <Badge variant="secondary">
-                Active
-              </Badge>
-              <span className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {Math.round(task.durationMinutes/60*10)/10}h
-              </span>
-              <span 
-                className={`flex items-center gap-1 text-xs font-medium ${
-                  (task.energyImpact ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}
-                data-testid={`energy-impact-${task.id}`}
-              >
-                {(task.energyImpact ?? 0) >= 0 ? '+' : ''}{task.energyImpact ?? 0}
-              </span>
-            </div>
-            {task.tags && task.tags.length > 0 && (
-              <div className="flex gap-1 mt-1">
-                {task.tags.map((tag, index) => (
-                  <Badge key={index} variant="secondary" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
+  const TaskCard = ({ task }: { task: RecurringTask }) => {
+    const taskCardContent = (
+      <Card 
+        className={`mb-2 ${!isMobile ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} border-l-4 border-l-primary transition-opacity ${
+          draggedTask?.id === task.id ? 'opacity-50' : 'opacity-100'
+        }`}
+        draggable={!isMobile}
+        onDragStart={!isMobile ? (e) => handleDragStart(task, e) : undefined}
+        onDragEnd={!isMobile ? handleDragEnd : undefined}
+        onClick={isMobile ? () => {
+          setSelectedTaskForScheduling(task);
+          setIsScheduleModalOpen(true);
+        } : undefined}
+        data-testid={`task-card-${task.id}`}
+      >
+        <CardContent className="p-3">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                {!isMobile && <GripVertical className="h-3 w-3 text-muted-foreground" />}
+                <span className="font-medium text-sm">{task.taskName}</span>
               </div>
-            )}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="outline" className="text-xs">
+                  {task.taskType}
+                </Badge>
+                <Badge variant="secondary">
+                  Active
+                </Badge>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {Math.round(task.durationMinutes/60*10)/10}h
+                </span>
+                <span 
+                  className={`flex items-center gap-1 text-xs font-medium ${
+                    (task.energyImpact ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}
+                  data-testid={`energy-impact-${task.id}`}
+                >
+                  {(task.energyImpact ?? 0) >= 0 ? '+' : ''}{task.energyImpact ?? 0}
+                </span>
+              </div>
+              {task.tags && task.tags.length > 0 && (
+                <div className="flex gap-1 mt-1">
+                  {task.tags.map((tag, index) => (
+                    <Badge key={index} variant="secondary" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" data-testid={`menu-task-${task.id}`}>
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {isMobile && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedTaskForScheduling(task);
+                        setIsScheduleModalOpen(true);
+                      }}
+                      data-testid={`schedule-task-${task.id}`}
+                    >
+                      <Calendar className="h-4 w-4 mr-2" />
+                      Schedule to...
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                <DropdownMenuItem>Edit</DropdownMenuItem>
+                <DropdownMenuItem>Duplicate</DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" data-testid={`menu-task-${task.id}`}>
-                <MoreVertical className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem>Edit</DropdownMenuItem>
-              <DropdownMenuItem>Duplicate</DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </CardContent>
-    </Card>
-  );
+        </CardContent>
+      </Card>
+    );
+
+    if (isMobile) {
+      return (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            {taskCardContent}
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem
+              onClick={() => {
+                setSelectedTaskForScheduling(task);
+                setIsScheduleModalOpen(true);
+              }}
+              data-testid={`context-schedule-${task.id}`}
+            >
+              <Calendar className="h-4 w-4 mr-2" />
+              Schedule to...
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem>Edit Task</ContextMenuItem>
+            <ContextMenuItem>Duplicate Task</ContextMenuItem>
+            <ContextMenuItem className="text-destructive">Delete Task</ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      );
+    }
+
+    return taskCardContent;
+  };
 
   const WeeklyMatrix = () => (
     <div className="grid grid-cols-8 gap-2">
@@ -1067,11 +1150,18 @@ export default function RecurringTasksPage() {
     const selectedTasksCount = extractedTasks.filter(task => task.selected).length;
 
     return (
-      <Card className="sticky top-0 z-30 mb-6">
+      <Card className="sticky top-0 z-40 mb-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold">Task Management</h2>
+              <h2 className={`font-semibold ${
+                isMobile ? 'text-base' : 'text-lg'
+              }`}>Task Management</h2>
+              {isMobile && (
+                <Badge variant="secondary" className="text-xs">
+                  {isPanelCollapsed ? 'Collapsed' : 'Expanded'}
+                </Badge>
+              )}
             </div>
             <Button
               variant="ghost"
@@ -1101,14 +1191,19 @@ export default function RecurringTasksPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">
-                      Drag tasks to the Weekly Matrix to schedule them
+                      {isMobile 
+                        ? 'Tap tasks or use context menu to schedule them'
+                        : 'Drag tasks to the Weekly Matrix to schedule them'
+                      }
                     </p>
                     <Button size="sm" data-testid="button-add-recurring-task">
                       <Plus className="h-4 w-4 mr-1" />
                       Add
                     </Button>
                   </div>
-                  <div className="relative h-40">
+                  <div className={`relative ${
+                    isMobile ? 'h-32' : 'h-40'
+                  }`}>
                     {tasksLoading ? (
                       <div className="flex space-x-3 overflow-x-auto pb-2">
                         {[1, 2, 3].map(i => (
@@ -1117,11 +1212,19 @@ export default function RecurringTasksPage() {
                       </div>
                     ) : (
                       <div 
-                        className="flex space-x-3 overflow-x-auto pb-2 h-full" 
+                        className={`flex space-x-3 overflow-x-auto pb-2 h-full ${
+                          isMobile ? 'scroll-smooth' : ''
+                        }`}
+                        style={{
+                          scrollbarWidth: isMobile ? 'thin' : 'auto',
+                          WebkitOverflowScrolling: 'touch'
+                        }} 
                         data-testid="row-task-library"
                       >
                         {recurringTasks.map((task: RecurringTask) => (
-                          <div key={task.id} className="flex-shrink-0 w-80">
+                          <div key={task.id} className={`flex-shrink-0 ${
+                            isMobile ? 'w-64 min-w-[16rem]' : 'w-80'
+                          }`}>
                             <TaskCard task={task} />
                           </div>
                         ))}
@@ -1380,8 +1483,76 @@ export default function RecurringTasksPage() {
     );
   };
 
+  // Mobile Scheduling Modal Component
+  const MobileScheduleModal = () => (
+    <Dialog open={isScheduleModalOpen} onOpenChange={setIsScheduleModalOpen}>
+      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Schedule Task</DialogTitle>
+        </DialogHeader>
+        {selectedTaskForScheduling && (
+          <div className="space-y-4">
+            <div className="p-3 bg-muted rounded-lg">
+              <h4 className="font-medium text-sm mb-1">{selectedTaskForScheduling.taskName}</h4>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="outline" className="text-xs">
+                  {selectedTaskForScheduling.taskType}
+                </Badge>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {Math.round(selectedTaskForScheduling.durationMinutes/60*10)/10}h
+                </span>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <h5 className="font-medium text-sm">Select Day & Time</h5>
+              <div className="grid gap-2">
+                {TIME_BLOCKS.map((timeBlock) => (
+                  <div key={timeBlock} className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground px-2">
+                      {timeBlock}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {DAYS_OF_WEEK.slice(0, 7).map((day, dayIndex) => (
+                        <Button
+                          key={`${timeBlock}-${day}`}
+                          variant="outline"
+                          size="sm"
+                          className="h-auto p-2 text-xs"
+                          onClick={() => handleMobileSchedule(selectedTaskForScheduling, dayIndex, timeBlock)}
+                          data-testid={`mobile-schedule-${dayIndex}-${timeBlock}`}
+                        >
+                          {day.slice(0, 3)}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex gap-2 pt-4">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setIsScheduleModalOpen(false);
+                  setSelectedTaskForScheduling(null);
+                }}
+                data-testid="cancel-mobile-schedule"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
-    <div className="p-6 space-y-6">
+    <div className={`p-6 space-y-6 ${isMobile ? 'p-4 space-y-4' : ''}`}>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Recurring Tasks</h1>
         <div className="flex gap-2">
@@ -1686,6 +1857,7 @@ export default function RecurringTasksPage() {
 
       {/* Sticky Top Panel */}
       <StickyTopPanel />
+      <MobileScheduleModal />
 
       {/* Main Content - Full Width */}
       <div className="space-y-6">
