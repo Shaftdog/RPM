@@ -75,11 +75,18 @@ export default function StrategicPlanningMatrix() {
       newTimeHorizon?: string;
       newSubcategory?: string;
     }) => {
-      const response = await apiRequest("POST", "/api/planning/move", {
+      const updateData: any = {
         taskId,
         newTimeHorizon,
         newSubcategory,
-      });
+      };
+      
+      // If moving to "Today", automatically set X Date to today
+      if (newTimeHorizon === "Today") {
+        updateData.xDate = new Date().toISOString();
+      }
+      
+      const response = await apiRequest("POST", "/api/planning/move", updateData);
       return response.json();
     },
     onSuccess: () => {

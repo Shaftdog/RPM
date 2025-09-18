@@ -254,6 +254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         newTimeHorizon: z.enum(["VISION", "10 Year", "5 Year", "1 Year", "Quarter", "Week", "Today", "BACKLOG"]).optional(),
         newSubcategory: z.enum(["Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure", "Marketing", "Sales", "Operations", "Products", "Production"]).optional(),
         newCategory: z.enum(["Personal", "Business"]).optional(),
+        xDate: z.string().datetime().optional(),
       });
 
       const validationResult = moveTaskSchema.safeParse(req.body);
@@ -264,12 +265,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const { taskId, newTimeHorizon, newSubcategory, newCategory } = validationResult.data;
+      const { taskId, newTimeHorizon, newSubcategory, newCategory, xDate } = validationResult.data;
       
       const updates: any = {};
       if (newTimeHorizon) updates.timeHorizon = newTimeHorizon;
       if (newSubcategory) updates.subcategory = newSubcategory;
       if (newCategory) updates.category = newCategory;
+      if (xDate) updates.xDate = new Date(xDate);
       
       const task = await storage.updateTask(taskId, req.user.id, updates);
       res.json(task);
