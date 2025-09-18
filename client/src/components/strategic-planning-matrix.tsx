@@ -185,8 +185,8 @@ export default function StrategicPlanningMatrix() {
     });
   });
 
-  // Populate matrix with tasks
-  tasks.forEach(task => {
+  // Populate matrix with tasks (exclude completed tasks)
+  tasks.filter(task => task.status !== 'completed').forEach(task => {
     const horizon = task.timeHorizon === '1 Year' ? '1 Year' : 
                    task.timeHorizon === '5 Year' ? '5 Year' : 
                    task.timeHorizon === '10 Year' ? '10 Year' : 
