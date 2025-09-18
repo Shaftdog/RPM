@@ -356,10 +356,13 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
       max_completion_tokens: 1000,
     });
 
+    console.log('OpenAI raw response:', response.choices[0].message.content);
     const result = JSON.parse(response.choices[0].message.content || "{}");
+    console.log('Parsed result:', result);
     return result.tasks || [];
   } catch (error) {
-    console.error("Error analyzing image:", error);
+    console.error("Error analyzing image - Full details:", error);
+    console.error("Error stack:", error instanceof Error ? error.stack : error);
     throw new Error("Failed to analyze image for tasks");
   }
 }
