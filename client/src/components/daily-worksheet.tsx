@@ -75,6 +75,33 @@ export default function DailyWorksheet() {
     new Date(task.xDate).toDateString() === new Date(selectedDate).toDateString()
   );
 
+  // Debug logging for outcomes filtering
+  console.log('DailyWorksheet Debug:', {
+    selectedDate,
+    selectedDateString: new Date(selectedDate).toDateString(),
+    totalTasks: tasks.length,
+    milestoneTasks: tasks.filter(t => t.type === 'Milestone' || t.type === 'Sub-Milestone').length,
+    milestonesWithXDate: tasks.filter(t => (t.type === 'Milestone' || t.type === 'Sub-Milestone') && t.xDate).length,
+    outcomesToday: outcomesToday.length,
+    outcomesData: outcomesToday.map(t => ({ 
+      id: t.id, 
+      name: t.name, 
+      type: t.type, 
+      xDate: t.xDate,
+      xDateString: t.xDate ? new Date(t.xDate).toDateString() : 'null',
+      xDateMatches: t.xDate ? new Date(t.xDate).toDateString() === new Date(selectedDate).toDateString() : false
+    })),
+    milestoneTasksWithDates: tasks.filter(t => (t.type === 'Milestone' || t.type === 'Sub-Milestone') && t.xDate).map(t => ({
+      id: t.id,
+      name: t.name,
+      type: t.type,
+      xDate: t.xDate,
+      xDateString: new Date(t.xDate).toDateString(),
+      selectedDateString: new Date(selectedDate).toDateString(),
+      matches: new Date(t.xDate).toDateString() === new Date(selectedDate).toDateString()
+    }))
+  });
+
   // Persist outcomes panel collapse state
   useEffect(() => {
     localStorage.setItem('daily-outcomes-collapsed', JSON.stringify(isOutcomesCollapsed));
