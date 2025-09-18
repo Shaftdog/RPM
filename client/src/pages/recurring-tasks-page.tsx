@@ -28,7 +28,8 @@ import {
   Loader2,
   Library,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Edit
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -107,6 +108,7 @@ export default function RecurringTasksPage() {
   const [draggedTask, setDraggedTask] = useState<RecurringTask | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<RecurringTask | null>(null);
   const isMobile = useIsMobile();
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
     const saved = localStorage.getItem('recurring-tasks-panel-collapsed');
@@ -197,6 +199,31 @@ export default function RecurringTasksPage() {
     },
   });
 
+  // Update recurring task mutation
+  const updateTaskMutation = useMutation({
+    mutationFn: async ({ id, taskData }: { id: string; taskData: InsertRecurringTask }) => {
+      const response = await apiRequest("PUT", `/api/recurring-tasks/${id}`, taskData);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/recurring-tasks'] });
+      toast({
+        title: "Task updated!",
+        description: "Recurring task updated successfully.",
+      });
+      setEditingTask(null);
+      setIsCreateDialogOpen(false);
+      form.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error updating task",
+        description: error.message || "Failed to update task",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Form for creating new recurring task
   const form = useForm<InsertRecurringTask>({
     resolver: zodResolver(insertRecurringTaskSchema),
@@ -217,7 +244,41 @@ export default function RecurringTasksPage() {
   });
 
   const onSubmit = (data: InsertRecurringTask) => {
-    createTaskMutation.mutate(data);
+    if (editingTask) {
+      updateTaskMutation.mutate({ id: editingTask.id, taskData: data });
+    } else {
+      createTaskMutation.mutate(data);
+    }
+  };
+
+  // Function to start editing a task
+  const startEditingTask = (task: RecurringTask) => {
+    setEditingTask(task);
+    // Populate the form with the task data
+    form.reset({
+      taskName: task.taskName,
+      taskType: task.taskType,
+      timeBlock: task.timeBlock || "",
+      daysOfWeek: task.daysOfWeek || [],
+      category: task.category,
+      subcategory: task.subcategory,
+      durationMinutes: task.durationMinutes,
+      energyImpact: task.energyImpact,
+      priority: task.priority,
+      description: task.description || "",
+      tags: task.tags || [],
+      isActive: task.isActive,
+    });
+    setIsCreateDialogOpen(true);
+  };
+
+  // Function to handle dialog close
+  const handleDialogClose = (open: boolean) => {
+    setIsCreateDialogOpen(open);
+    if (!open) {
+      setEditingTask(null);
+      form.reset();
+    }
   };
 
   // AI Assistant functions
@@ -570,7 +631,13 @@ export default function RecurringTasksPage() {
                     <DropdownMenuSeparator />
                   </>
                 )}
-                <DropdownMenuItem>Edit</DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => startEditingTask(task)}
+                  data-testid={`edit-task-${task.id}`}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </DropdownMenuItem>
                 <DropdownMenuItem>Duplicate</DropdownMenuItem>
                 <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
               </DropdownMenuContent>
@@ -598,7 +665,13 @@ export default function RecurringTasksPage() {
               Schedule to...
             </ContextMenuItem>
             <ContextMenuSeparator />
-            <ContextMenuItem>Edit Task</ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => startEditingTask(task)}
+              data-testid={`context-edit-${task.id}`}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Edit Task
+            </ContextMenuItem>
             <ContextMenuItem>Duplicate Task</ContextMenuItem>
             <ContextMenuItem className="text-destructive">Delete Task</ContextMenuItem>
           </ContextMenuContent>
@@ -717,7 +790,16 @@ export default function RecurringTasksPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent>
-                        <DropdownMenuItem>Edit Schedule</DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            const taskToEdit = recurringTasks.find(t => t.id === schedule.recurringTaskId);
+                            if (taskToEdit) startEditingTask(taskToEdit);
+                          }}
+                          data-testid={`edit-schedule-${schedule.id}`}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit Schedule
+                        </DropdownMenuItem>
                         <DropdownMenuItem>Skip Next</DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive">Remove</DropdownMenuItem>
                       </DropdownMenuContent>
@@ -1560,7 +1642,7 @@ export default function RecurringTasksPage() {
             <Calendar className="h-4 w-4 mr-2" />
             View Calendar
           </Button>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <Dialog open={isCreateDialogOpen} onOpenChange={handleDialogClose}>
             <DialogTrigger asChild>
               <Button size="sm" data-testid="button-create-recurring">
                 <Plus className="h-4 w-4 mr-2" />
@@ -1569,7 +1651,9 @@ export default function RecurringTasksPage() {
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create New Recurring Task</DialogTitle>
+                <DialogTitle>
+                  {editingTask ? 'Edit Recurring Task' : 'Create New Recurring Task'}
+                </DialogTitle>
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -1845,7 +1929,10 @@ export default function RecurringTasksPage() {
                       disabled={createTaskMutation.isPending}
                       data-testid="button-submit"
                     >
-                      {createTaskMutation.isPending ? "Creating..." : "Create Task"}
+                      {editingTask 
+                        ? (updateTaskMutation.isPending ? "Updating..." : "Update Task")
+                        : (createTaskMutation.isPending ? "Creating..." : "Create Task")
+                      }
                     </Button>
                   </div>
                 </form>
