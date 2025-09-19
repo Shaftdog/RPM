@@ -398,6 +398,15 @@ export default function DailyWorksheet() {
 
   const completionRate = getTotalQuartiles() > 0 ? (getCompletedTasks() / getTotalQuartiles()) * 100 : 0;
 
+  // Helper to get selected task details
+  const selectedTask = selectedTaskId ? tasks.find(task => task.id === selectedTaskId) : null;
+
+  // Close modal handler
+  const handleCloseDetails = () => {
+    setIsDetailsOpen(false);
+    setSelectedTaskId(null);
+  };
+
   return (
     <div className="space-y-6">
       {/* Today's Outcomes */}
@@ -848,6 +857,117 @@ export default function DailyWorksheet() {
           </Card>
         </div>
       </div>
+      
+      {/* Task Details Modal */}
+      <Dialog open={isDetailsOpen} onOpenChange={handleCloseDetails}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="title-task-details">
+              Task Details
+            </DialogTitle>
+          </DialogHeader>
+          {selectedTask && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-lg mb-2" data-testid="text-task-name">
+                  {selectedTask.name}
+                </h3>
+                {selectedTask.description && (
+                  <p className="text-muted-foreground" data-testid="text-task-description">
+                    {selectedTask.description}
+                  </p>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Priority</label>
+                  <Badge variant="outline" className="ml-2" data-testid="badge-task-priority">
+                    {selectedTask.priority || 'Not set'}
+                  </Badge>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Status</label>
+                  <Badge variant="outline" className="ml-2" data-testid="badge-task-status">
+                    {selectedTask.status || 'Not started'}
+                  </Badge>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Category</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-task-category">
+                    {selectedTask.category || 'Uncategorized'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Subcategory</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-task-subcategory">
+                    {selectedTask.subcategory || 'None'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Time Horizon</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-task-horizon">
+                    {selectedTask.timeHorizon || 'Not set'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Assignee</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-task-assignee">
+                    {selectedTask.assignee || 'Unassigned'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Estimated Time</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-task-estimated">
+                    {selectedTask.estimatedTime ? `${selectedTask.estimatedTime} min` : 'Not set'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Actual Time</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-task-actual">
+                    {selectedTask.actualTime ? `${selectedTask.actualTime} min` : 'Not recorded'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Due Date</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-task-due">
+                    {selectedTask.dueDate ? new Date(selectedTask.dueDate).toLocaleDateString() : 'No due date'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Completion Date</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-task-completion">
+                    {selectedTask.xDate ? new Date(selectedTask.xDate).toLocaleDateString() : 'Not completed'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Progress</label>
+                  <p className="text-sm text-muted-foreground" data-testid="text-task-progress">
+                    {selectedTask.progress || 0}%
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Calorie Impact</label>
+                  <div className="text-sm" data-testid="text-task-calories">
+                    <span className="text-green-600">+{selectedTask.caloriesIntake || 0}</span>
+                    <span className="mx-1">/</span>
+                    <span className="text-orange-600">-{selectedTask.caloriesExpenditure || 0}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {selectedTask.why && (
+                <div>
+                  <label className="text-sm font-medium block mb-2">Why this task matters</label>
+                  <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded" data-testid="text-task-why">
+                    {selectedTask.why}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
