@@ -352,32 +352,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Handle array format (local fallback or structured response)
     if (Array.isArray(aiSchedule.schedule)) {
       for (const block of aiSchedule.schedule) {
-        let taskList = [];
-        
-        // Extract tasks from different possible structures
-        if (block.tasks && Array.isArray(block.tasks)) {
-          taskList = block.tasks;
-        } else if (block.quartiles && Array.isArray(block.quartiles)) {
-          taskList = block.quartiles.map((q: any) => q.task).filter(Boolean);
-        } else if (block.task && typeof block.task === 'object' && block.task.id) {
-          // New format: single task object per time block
-          taskList = [block.task];
-        }
-        
-        // Create entries for up to 4 tasks per time block
-        for (let i = 0; i < Math.min(taskList.length, 4); i++) {
-          const task = taskList[i];
-          const taskId = task.id || resolveTaskIdByName(task.name, nameToId);
-          
-          // Create entry even if no task ID (for recurring tasks)
-          // plannedTaskId can be null for recurring tasks that don't have a corresponding task entry
-          entries.push({
-            date,
-            timeBlock: block.timeBlock,
-            quartile: i + 1,
-            plannedTaskId: taskId || null,
-            status: 'not_started' as const
+        // Handle the quartiles array format from local scheduler
+        if (block.quartiles && Array.isArray(block.quartiles)) {
+          block.quartiles.forEach((q: any, index: number) => {
+            if (q.task) {
+              const taskId = q.task.id || resolveTaskIdByName(q.task.name, nameToId);
+              entries.push({
+                date,
+                timeBlock: block.timeBlock,
+                quartile: index + 1,
+                plannedTaskId: taskId || null,
+                status: 'not_started' as const
+              });
+            }
           });
+        }
+        // Handle other array formats
+        else {
+          let taskList = [];
+          
+          // Extract tasks from different possible structures
+          if (block.tasks && Array.isArray(block.tasks)) {
+            taskList = block.tasks;
+          } else if (block.task && typeof block.task === 'object' && block.task.id) {
+            // New format: single task object per time block
+            taskList = [block.task];
+          }
+          
+          // Create entries for up to 4 tasks per time block
+          for (let i = 0; i < Math.min(taskList.length, 4); i++) {
+            const task = taskList[i];
+            const taskId = task.id || resolveTaskIdByName(task.name, nameToId);
+            
+            entries.push({
+              date,
+              timeBlock: block.timeBlock,
+              quartile: i + 1,
+              plannedTaskId: taskId || null,
+              status: 'not_started' as const
+            });
+          }
         }
       }
     } 
