@@ -258,6 +258,84 @@ export default function DailyWorksheet() {
     return "";
   };
 
+  // Helper to get all candidate tasks for a quarter (active task + matching recurring tasks)
+  const getCandidateTasksForQuarter = (timeBlock: string, quartile: number) => {
+    const entry = getScheduleEntry(timeBlock, quartile);
+    const selectedDateObj = new Date(selectedDate);
+    const dayOfWeek = selectedDateObj.toLocaleDateString('en-US', { weekday: 'lowercase' });
+    
+    const candidates = [];
+    
+    // 1. Add currently active/selected task if it exists and isn't a placeholder
+    if (entry && !entry.reflection?.startsWith('PLACEHOLDER:')) {
+      if (entry.actualTaskId) {
+        const task = tasks.find(t => t.id === entry.actualTaskId);
+        if (task) {
+          candidates.push({
+            id: entry.actualTaskId,
+            name: task.name,
+            type: 'regular',
+            isActive: true,
+            source: 'active'
+          });
+        }
+      } else if (entry.plannedTaskId) {
+        const task = tasks.find(t => t.id === entry.plannedTaskId);
+        if (task) {
+          candidates.push({
+            id: entry.plannedTaskId,
+            name: task.name,
+            type: 'regular',
+            isActive: true,
+            source: 'planned'
+          });
+        }
+      } else if (entry.reflection?.startsWith('RECURRING_TASK:')) {
+        const taskName = entry.reflection.replace('RECURRING_TASK:', '');
+        candidates.push({
+          id: `recurring-${timeBlock}-${quartile}`,
+          name: taskName,
+          type: 'recurring',
+          isActive: true,
+          source: 'recurring_active'
+        });
+      }
+    }
+    
+    // 2. Add matching recurring tasks that aren't already active
+    const matchingRecurring = recurringTasks.filter(rt => {
+      // Must match time block
+      if (rt.timeBlock !== timeBlock) return false;
+      
+      // Must match quarter (or recurring task has no specific quarter)
+      if (rt.quarter && rt.quarter !== quartile) return false;
+      
+      // Must include today's day of week
+      if (!rt.daysOfWeek || !rt.daysOfWeek.includes(dayOfWeek)) return false;
+      
+      // Don't duplicate already active tasks
+      const isAlreadyActive = candidates.some(c => 
+        c.name === rt.taskName && c.type === 'recurring'
+      );
+      
+      return !isAlreadyActive;
+    });
+    
+    // Add recurring tasks as candidates
+    matchingRecurring.forEach(rt => {
+      candidates.push({
+        id: rt.id,
+        name: rt.taskName,
+        type: 'recurring',
+        isActive: false,
+        source: 'recurring_candidate',
+        durationMinutes: rt.durationMinutes
+      });
+    });
+    
+    return candidates;
+  };
+
   const getCompletedTasks = () => {
     return schedule.filter((entry) => entry.status === 'completed').length;
   };
