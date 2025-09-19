@@ -154,7 +154,6 @@ export const dailySchedules = pgTable("daily_schedules", {
   quartile: integer("quartile").notNull(), // 1-4
   plannedTaskId: varchar("planned_task_id").references(() => tasks.id, { onDelete: "set null" }),
   actualTaskId: varchar("actual_task_id").references(() => tasks.id, { onDelete: "set null" }),
-  recurringTaskName: text("recurring_task_name"), // for storing recurring task names
   status: statusEnum("status").notNull().default("not_started"),
   energyImpact: integer("energy_impact").default(0), // positive or negative
   reflection: text("reflection"),
