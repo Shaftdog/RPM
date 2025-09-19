@@ -578,13 +578,14 @@ export default function DailyWorksheet() {
                                 </div>
                               ))}
                               
-                              {/* Overflow indicator */}
+                              {/* Overflow indicator with tooltip */}
                               {hiddenCount > 0 && (
                                 <div 
                                   className="flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover:bg-secondary/50 text-muted-foreground"
+                                  title={`${hiddenCount} more tasks: ${candidates.slice(4).map(t => t.name).join(', ')}`}
                                   data-testid={`button-more-tasks-${block.name}-${quartile}`}
                                 >
-                                  <span className="text-xs">+{hiddenCount} more...</span>
+                                  <span className="text-xs">📋 +{hiddenCount} more</span>
                                 </div>
                               )}
                             </>
