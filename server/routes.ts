@@ -453,25 +453,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               if (isNaN(quartileNum) || quartileNum < 1 || quartileNum > 4) continue;
               
-              // Handle different task formats
-              let taskData = tasks as any;
-              let taskId: string | undefined;
+              // Handle different task formats - properly handle multiple tasks
+              let taskArray = tasks as any;
               
-              if (Array.isArray(taskData) && taskData.length > 0) {
-                // If it's an array, take the first task
-                taskData = taskData[0];
+              // Ensure we have an array of tasks
+              if (!Array.isArray(taskArray)) {
+                taskArray = taskArray ? [taskArray] : [];
               }
               
-              if (typeof taskData === 'string') {
-                // Task name as string - look it up
-                taskId = resolveTaskIdByName(taskData, nameToId);
-              } else if (taskData && typeof taskData === 'object') {
-                // Task object
-                if (taskData.id) {
-                  taskId = taskData.id;
-                } else if (taskData.taskName || taskData.name) {
-                  taskId = resolveTaskIdByName(taskData.taskName || taskData.name, nameToId);
-                }
+              // Create an entry for each task in this quarter
+              taskArray.forEach((taskData: any, taskIndex: number) => {
+                let taskId: string | undefined;
+                
+                if (typeof taskData === 'string') {
+                  // Task name as string - look it up
+                  taskId = resolveTaskIdByName(taskData, nameToId);
+                } else if (taskData && typeof taskData === 'object') {
+                  // Task object
+                  if (taskData.id) {
+                    taskId = taskData.id;
+                  } else if (taskData.taskName || taskData.name) {
+                    taskId = resolveTaskIdByName(taskData.taskName || taskData.name, nameToId);
+                  }
               }
               
               // Create entry even if no task ID (for recurring tasks)
