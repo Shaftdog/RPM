@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { TIME_BLOCKS } from "@shared/schema";
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ 
@@ -74,36 +75,8 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
 
 // Local fallback scheduler when OpenAI is unavailable
 function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferences: any): any {
-  const schedule: Array<{
-    timeBlock: string;
-    start: string;
-    end: string;
-    quartiles: Array<{
-      task: {
-        id: string;
-        name: string;
-        priority: string;
-        estimatedTime: string;
-      };
-      start: string;
-      end: string;
-      allocatedTime: string;
-    }>;
-  }> = [];
-  
-  // Complete list of all time blocks
-  const timeBlocks = [
-    { name: "Recover", start: "6:00", end: "7:00" },
-    { name: "PHYSICAL MENTAL", start: "7:00", end: "9:00" },
-    { name: "CHIEF PROJECT", start: "9:00", end: "11:00" },
-    { name: "HOUR OF POWER", start: "11:00", end: "12:00" },
-    { name: "PRODUCTION WORK", start: "12:00", end: "13:00" },
-    { name: "COMPANY BLOCK", start: "13:00", end: "14:00" },
-    { name: "BUSINESS AUTOMATION", start: "14:00", end: "15:00" },
-    { name: "ENVIRONMENTAL", start: "15:00", end: "16:00" },
-    { name: "FLEXIBLE BLOCK", start: "16:00", end: "19:00" },
-    { name: "WIND DOWN", start: "19:00", end: "21:00" }
-  ];
+  // Use same format as OpenAI output
+  const schedule: Record<string, Record<string, Array<{taskName: string, durationMinutes: number}>>> = {};
   
   // Get current day of week for recurring task filtering
   const dayOfWeek = new Date().getDay(); // 0=Sunday, 1=Monday, etc.
@@ -118,19 +91,14 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
   // Distribute tasks by priority across time blocks
   const availableTasks = [...tasks];
   
-  timeBlocks.forEach((block) => {
-    // Initialize 4 quartiles for each time block
-    const quartiles: Array<{
-      task: {
-        id: string;
-        name: string;
-        priority: string;
-        estimatedTime: string;
-      };
-      start: string;
-      end: string;
-      allocatedTime: string;
-    }> = [];
+  TIME_BLOCKS.forEach((block) => {
+    // Initialize quartiles for this time block in OpenAI format
+    schedule[block.name] = {
+      "Q1": [],
+      "Q2": [],
+      "Q3": [],
+      "Q4": []
+    };
     
     // Calculate quarter time slots within the block
     const blockStartMinutes = timeToMinutes(block.start);
@@ -139,34 +107,25 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
     const quarterDuration = blockDuration / 4;
     
     // First, place recurring tasks in their preferred quarters
-    // Handle both formats: "PHYSICAL MENTAL" and "PHYSICAL MENTAL (7-9AM)"
     todaysRecurringTasks.forEach(recurringTask => {
       const blockMatches = recurringTask.timeBlock === block.name || 
                           recurringTask.timeBlock.startsWith(block.name + " (");
       if (blockMatches && recurringTask.quarter) {
-        const quarterIndex = recurringTask.quarter - 1; // Convert 1-4 to 0-3
-        if (quarterIndex >= 0 && quarterIndex < 4 && !quartiles[quarterIndex]) {
-          const quarterStart = blockStartMinutes + (quarterIndex * quarterDuration);
-          const quarterEnd = quarterStart + quarterDuration;
-          
-          quartiles[quarterIndex] = {
-            task: {
-              id: recurringTask.id || `recurring_${recurringTask.taskName}`,
-              name: recurringTask.taskName,
-              priority: recurringTask.priority || "Medium",
-              estimatedTime: (recurringTask.durationMinutes / 60).toFixed(2)
-            },
-            start: minutesToTime(quarterStart),
-            end: minutesToTime(quarterEnd),
-            allocatedTime: (quarterDuration / 60).toFixed(2)
-          };
+        const quarterKey = `Q${recurringTask.quarter}`;
+        if (quarterKey in schedule[block.name]) {
+          schedule[block.name][quarterKey].push({
+            taskName: recurringTask.taskName,
+            durationMinutes: recurringTask.durationMinutes || quarterDuration
+          });
         }
       }
     });
     
-    // Then fill remaining quarters with available tasks
-    for (let i = 0; i < 4; i++) {
-      if (!quartiles[i] && availableTasks.length > 0) {
+    // Then fill remaining quarters with available tasks or placeholders
+    for (let i = 1; i <= 4; i++) {
+      const quarterKey = `Q${i}`;
+      
+      if (schedule[block.name][quarterKey].length === 0) {
         let targetTask = null;
         
         // Assign based on block type and priority
@@ -177,10 +136,10 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
         } else if (block.name === "FLEXIBLE BLOCK" && availableTasks.some(t => t.priority === "Low")) {
           targetTask = availableTasks.find(t => t.priority === "Low");
         } else if (availableTasks.length > 0) {
-          // Prioritize High priority tasks for early blocks, Medium for middle, Low for later
-          if (i < 2 && availableTasks.some(t => t.priority === "High")) {
+          // Prioritize High priority tasks for early quarters, Medium for middle, Low for later
+          if (i <= 2 && availableTasks.some(t => t.priority === "High")) {
             targetTask = availableTasks.find(t => t.priority === "High");
-          } else if (i === 2 && availableTasks.some(t => t.priority === "Medium")) {
+          } else if (i === 3 && availableTasks.some(t => t.priority === "Medium")) {
             targetTask = availableTasks.find(t => t.priority === "Medium");
           } else {
             targetTask = availableTasks[0]; // Any remaining task
@@ -188,53 +147,36 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
         }
         
         if (targetTask) {
-          const quarterStart = blockStartMinutes + (i * quarterDuration);
-          const quarterEnd = quarterStart + quarterDuration;
-          
-          quartiles[i] = {
-            task: {
-              id: targetTask.id,
-              name: targetTask.name,
-              priority: targetTask.priority,
-              estimatedTime: targetTask.estimatedTime || "0.25"
-            },
-            start: minutesToTime(quarterStart),
-            end: minutesToTime(quarterEnd),
-            allocatedTime: (quarterDuration / 60).toFixed(2)
-          };
+          schedule[block.name][quarterKey].push({
+            taskName: targetTask.name,
+            durationMinutes: quarterDuration
+          });
           
           // Remove assigned task from available tasks
           const taskIndex = availableTasks.findIndex(t => t.id === targetTask.id);
           if (taskIndex > -1) {
             availableTasks.splice(taskIndex, 1);
           }
+        } else {
+          // Add meaningful placeholder content
+          let placeholderName = "Planning & Review";
+          if (block.name === "PHYSICAL MENTAL") placeholderName = "Mindfulness Break";
+          else if (block.name === "WIND DOWN") placeholderName = "Relaxation";
+          else if (block.name === "Recover") placeholderName = "Recovery Time";
+          
+          schedule[block.name][quarterKey].push({
+            taskName: placeholderName,
+            durationMinutes: quarterDuration
+          });
         }
       }
     }
     
-    // Always show all 4 quartiles, fill empty ones with placeholder
-    const allQuartiles = [];
-    for (let i = 0; i < 4; i++) {
-      allQuartiles.push(quartiles[i] || {
-        task: null,
-        start: minutesToTime(blockStartMinutes + (i * quarterDuration)),
-        end: minutesToTime(blockStartMinutes + ((i + 1) * quarterDuration)),
-        allocatedTime: (quarterDuration / 60).toFixed(2)
-      });
-    }
-    
-    schedule.push({
-      timeBlock: block.name,
-      start: block.start,
-      end: block.end,
-      quartiles: allQuartiles
-    });
   });
   
   return {
-    schedule,
-    source: "local_fallback",
-    totalTasks: tasks.length
+    ...schedule,
+    source: "local_fallback"
   };
 }
 
