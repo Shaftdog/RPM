@@ -219,6 +219,39 @@ export default function DailyWorksheet() {
     );
   };
 
+  // Helper to find a recurring task that matches the schedule entry
+  const getRecurringTaskForEntry = (entry: DailyScheduleEntry | undefined): any | undefined => {
+    if (!entry || entry.plannedTaskId) return undefined;
+    
+    // Find recurring task that matches this time block and quartile
+    return recurringTasks.find((rt) => 
+      rt.timeBlock === entry.timeBlock && 
+      (!rt.quarter || rt.quarter === entry.quartile)
+    );
+  };
+
+  // Helper to get task name for display
+  const getTaskNameForEntry = (entry: DailyScheduleEntry | undefined): string => {
+    if (!entry) return "";
+    
+    // First try to find a regular task
+    if (entry.actualTaskId) {
+      const task = tasks.find(t => t.id === entry.actualTaskId);
+      if (task) return task.name;
+    }
+    
+    if (entry.plannedTaskId) {
+      const task = tasks.find(t => t.id === entry.plannedTaskId);
+      if (task) return task.name;
+    }
+    
+    // If no regular task, look for recurring task
+    const recurringTask = getRecurringTaskForEntry(entry);
+    if (recurringTask) return recurringTask.taskName;
+    
+    return "";
+  };
+
   const getCompletedTasks = () => {
     return schedule.filter((entry) => entry.status === 'completed').length;
   };
@@ -390,28 +423,36 @@ export default function DailyWorksheet() {
                         <div className={`text-xs mb-2 ${entry?.status === 'in_progress' ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
                           {timeRange} {entry?.status === 'in_progress' && '• ACTIVE'}
                         </div>
-                        <Select 
-                          value={entry?.actualTaskId || entry?.plannedTaskId || ""} 
-                          onValueChange={(taskId) => {
-                            if (entry?.id) {
-                              updateScheduleMutation.mutate({
-                                id: entry.id,
-                                actualTaskId: taskId,
-                              });
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="w-full text-xs mb-2" data-testid={`select-task-${block.name}-${quartile}`}>
-                            <SelectValue placeholder="Select task..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {tasks.map((task) => (
-                              <SelectItem key={task.id} value={task.id}>
-                                {task.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        {/* Display recurring task name if no regular task is assigned */}
+                        {!entry?.actualTaskId && !entry?.plannedTaskId && getRecurringTaskForEntry(entry) ? (
+                          <div className="w-full text-xs mb-2 p-2 bg-secondary rounded flex items-center gap-1">
+                            <span className="text-muted-foreground">⟲</span>
+                            <span>{getTaskNameForEntry(entry)}</span>
+                          </div>
+                        ) : (
+                          <Select 
+                            value={entry?.actualTaskId || entry?.plannedTaskId || ""} 
+                            onValueChange={(taskId) => {
+                              if (entry?.id) {
+                                updateScheduleMutation.mutate({
+                                  id: entry.id,
+                                  actualTaskId: taskId,
+                                });
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="w-full text-xs mb-2" data-testid={`select-task-${block.name}-${quartile}`}>
+                              <SelectValue placeholder="Select task..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tasks.map((task) => (
+                                <SelectItem key={task.id} value={task.id}>
+                                  {task.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                         <div className="text-xs">
                           <div className="text-muted-foreground mb-1">Status:</div>
                           <Badge 
