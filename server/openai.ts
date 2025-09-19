@@ -238,6 +238,11 @@ export async function generateDailySchedule(
       durationMinutes: rt.durationMinutes
     }));
 
+    // Debug logging to verify all recurring tasks are included
+    console.log(`DEBUG: Total recurring tasks from DB: ${recurringTasks.length}`);
+    console.log(`DEBUG: Sending ${trimmedRecurring.length} recurring tasks to AI:`, 
+      trimmedRecurring.map(rt => rt.taskName));
+
     const prompt = `
     Generate a daily schedule that includes ALL recurring tasks plus available regular tasks.
     

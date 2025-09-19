@@ -661,6 +661,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const recurringTasks = await storage.getRecurringTasks(userId);
       console.timeEnd('fetch_recurring');
       
+      // Debug what properties are actually being returned
+      console.log('DEBUG: First recurring task properties:', 
+        recurringTasks.length > 0 ? Object.keys(recurringTasks[0]) : 'No recurring tasks');
+      console.log('DEBUG: Sample recurring task data:', 
+        recurringTasks.length > 0 ? recurringTasks[0] : 'None');
+      
       // Get user preferences (you might want to store these in user profile)
       const userPreferences = {
         workHours: { start: "9:00", end: "17:00" },
@@ -1084,6 +1090,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
     });
+  });
+
+  // Debug endpoint to test recurring tasks data
+  app.get('/api/debug/recurring-tasks', isAuthenticated, async (req: any, res) => {
+    try {
+      const recurringTasks = await storage.getRecurringTasks(req.user.id);
+      console.log('DEBUG Endpoint: Total recurring tasks:', recurringTasks.length);
+      console.log('DEBUG Endpoint: First task keys:', recurringTasks.length > 0 ? Object.keys(recurringTasks[0]) : 'None');
+      console.log('DEBUG Endpoint: First task data:', recurringTasks.length > 0 ? recurringTasks[0] : 'None');
+      
+      const testMapping = recurringTasks.map(rt => ({
+        id: rt.id,
+        taskName: rt.taskName,
+        timeBlock: rt.timeBlock,
+        quarter: rt.quarter,
+        daysOfWeek: rt.daysOfWeek,
+        durationMinutes: rt.durationMinutes,
+        // Also try snake_case in case that's what's actually being returned
+        taskName_alt: rt.task_name,
+        timeBlock_alt: rt.time_block,
+        quarter_alt: rt.quartile
+      }));
+      
+      res.json({
+        total: recurringTasks.length,
+        rawFirstTask: recurringTasks[0],
+        mappedTasks: testMapping.slice(0, 5), // First 5 for debugging
+        allTaskNames: recurringTasks.map(rt => rt.taskName || rt.task_name || 'MISSING_NAME')
+      });
+    } catch (error) {
+      console.error("Debug endpoint error:", error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Helper function to broadcast to specific user
