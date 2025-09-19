@@ -218,6 +218,10 @@ export async function generateDailySchedule(
     return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
   }
 
+  // TEMPORARY DEBUG: Force local scheduler to test if the issue is with OpenAI response
+  console.log("DEBUG: Temporarily using local scheduler to test functionality");
+  return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
+
   try {
     // Include ALL tasks and recurring tasks - no arbitrary limits
     const trimmedTasks = filteredTasks.map(t => ({
