@@ -453,31 +453,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               if (isNaN(quartileNum) || quartileNum < 1 || quartileNum > 4) continue;
               
-              // Handle different task formats - properly handle multiple tasks
-              let taskArray = tasks as any;
+              // Handle different task formats with multiple task support
+              let taskData = tasks as any;
+              let taskId: string | undefined;
+              let taskNames: string[] = [];
               
-              // Ensure we have an array of tasks
-              if (!Array.isArray(taskArray)) {
-                taskArray = taskArray ? [taskArray] : [];
-              }
-              
-              // Create an entry for each task in this quarter
-              taskArray.forEach((taskData: any, taskIndex: number) => {
-                let taskId: string | undefined;
-                
-                if (typeof taskData === 'string') {
-                  // Task name as string - look it up
-                  taskId = resolveTaskIdByName(taskData, nameToId);
-                } else if (taskData && typeof taskData === 'object') {
-                  // Task object
-                  if (taskData.id) {
-                    taskId = taskData.id;
-                  } else if (taskData.taskName || taskData.name) {
-                    taskId = resolveTaskIdByName(taskData.taskName || taskData.name, nameToId);
+              if (Array.isArray(taskData) && taskData.length > 0) {
+                // Multiple tasks - collect all names and use first for primary ID
+                taskData.forEach((t: any, index: number) => {
+                  let taskName: string | undefined;
+                  if (typeof t === 'string') {
+                    taskName = t;
+                    if (index === 0) taskId = resolveTaskIdByName(t, nameToId);
+                  } else if (t && typeof t === 'object') {
+                    taskName = t.taskName || t.name;
+                    if (index === 0) {
+                      taskId = t.id || resolveTaskIdByName(taskName, nameToId);
+                    }
                   }
+                  if (taskName) taskNames.push(taskName);
+                });
+              } else if (taskData) {
+                // Single task
+                if (typeof taskData === 'string') {
+                  taskId = resolveTaskIdByName(taskData, nameToId);
+                  taskNames.push(taskData);
+                } else if (typeof taskData === 'object') {
+                  const taskName = taskData.taskName || taskData.name;
+                  taskId = taskData.id || resolveTaskIdByName(taskName, nameToId);
+                  if (taskName) taskNames.push(taskName);
+                }
               }
               
-              // Create entry even if no task ID (for recurring tasks)
+              // Create entry
               const entry: any = {
                 date,
                 timeBlock: baseTimeBlockName,
@@ -486,14 +494,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 status: 'not_started' as const
               };
               
-              // If no task ID found, store the recurring task name in reflection field
-              if (!taskId && taskData && typeof taskData === 'object' && (taskData.taskName || taskData.name)) {
-                entry.reflection = `RECURRING_TASK:${taskData.taskName || taskData.name}`;
+              // Store multiple task names in reflection if more than one
+              if (taskNames.length > 1) {
+                entry.reflection = `MULTIPLE_TASKS:${taskNames.join('|')}`;
+              } else if (taskNames.length === 1 && !taskId) {
+                entry.reflection = `RECURRING_TASK:${taskNames[0]}`;
               }
               
               entries.push(entry);
-            }
           }
+        }
         } else {
           // Handle direct quartile structure without time range nesting
           for (const [quartileKey, tasks] of Object.entries(timeBlockData as any)) {
@@ -511,28 +521,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             if (isNaN(quartileNum) || quartileNum < 1 || quartileNum > 4) continue;
             
-            // Handle different task formats
+            // Handle different task formats with multiple task support
             let taskData = tasks as any;
             let taskId: string | undefined;
+            let taskNames: string[] = [];
             
             if (Array.isArray(taskData) && taskData.length > 0) {
-              // If it's an array, take the first task
-              taskData = taskData[0];
-            }
-            
-            if (typeof taskData === 'string') {
-              // Task name as string - look it up
-              taskId = resolveTaskIdByName(taskData, nameToId);
-            } else if (taskData && typeof taskData === 'object') {
-              // Task object
-              if (taskData.id) {
-                taskId = taskData.id;
-              } else if (taskData.taskName || taskData.name) {
-                taskId = resolveTaskIdByName(taskData.taskName || taskData.name, nameToId);
+              // Multiple tasks - collect all names and use first for primary ID
+              taskData.forEach((t: any, index: number) => {
+                let taskName: string | undefined;
+                if (typeof t === 'string') {
+                  taskName = t;
+                  if (index === 0) taskId = resolveTaskIdByName(t, nameToId);
+                } else if (t && typeof t === 'object') {
+                  taskName = t.taskName || t.name;
+                  if (index === 0) {
+                    taskId = t.id || resolveTaskIdByName(taskName, nameToId);
+                  }
+                }
+                if (taskName) taskNames.push(taskName);
+              });
+            } else if (taskData) {
+              // Single task
+              if (typeof taskData === 'string') {
+                taskId = resolveTaskIdByName(taskData, nameToId);
+                taskNames.push(taskData);
+              } else if (typeof taskData === 'object') {
+                const taskName = taskData.taskName || taskData.name;
+                taskId = taskData.id || resolveTaskIdByName(taskName, nameToId);
+                if (taskName) taskNames.push(taskName);
               }
             }
             
-            // Create entry even if no task ID (for recurring tasks)
+            // Create entry
             const entry: any = {
               date,
               timeBlock: baseTimeBlockName,
@@ -541,9 +562,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               status: 'not_started' as const
             };
             
-            // If no task ID found, store the recurring task name in reflection field
-            if (!taskId && taskData && typeof taskData === 'object' && (taskData.taskName || taskData.name)) {
-              entry.reflection = `RECURRING_TASK:${taskData.taskName || taskData.name}`;
+            // Store multiple task names in reflection if more than one
+            if (taskNames.length > 1) {
+              entry.reflection = `MULTIPLE_TASKS:${taskNames.join('|')}`;
+            } else if (taskNames.length === 1 && !taskId) {
+              entry.reflection = `RECURRING_TASK:${taskNames[0]}`;
             }
             
             entries.push(entry);

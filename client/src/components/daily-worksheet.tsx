@@ -306,6 +306,19 @@ export default function DailyWorksheet() {
           isActive: true,
           source: 'recurring_active'
         });
+      } else if (entry.reflection?.startsWith('MULTIPLE_TASKS:')) {
+        // Handle multiple tasks from AI scheduler
+        const taskNamesStr = entry.reflection.replace('MULTIPLE_TASKS:', '');
+        const taskNames = taskNamesStr.split('|');
+        taskNames.forEach((taskName, index) => {
+          candidates.push({
+            id: `multiple-${timeBlock}-${quartile}-${index}`,
+            name: taskName.trim(),
+            type: 'recurring',
+            isActive: true,
+            source: 'multiple_tasks'
+          });
+        });
       }
     }
     
