@@ -640,6 +640,23 @@ export default function DailyWorksheet() {
                                     {task.name}
                                   </span>
                                   
+                                  {/* Info button for regular tasks */}
+                                  {task.type === 'regular' && task.isActive && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-4 w-4 p-0 hover:bg-secondary/50 flex-shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedTaskId(task.id);
+                                        setIsDetailsOpen(true);
+                                      }}
+                                      data-testid={`button-task-info-${block.name}-${quartile}-${taskIndex}`}
+                                    >
+                                      <Info className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                  
                                   {/* Duration for recurring tasks */}
                                   {task.durationMinutes && (
                                     <span className="text-xs text-muted-foreground flex-shrink-0">
