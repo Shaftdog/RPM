@@ -582,25 +582,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fill missing quartiles for this time block
       for (let quartile = 1; quartile <= 4; quartile++) {
         if (!existingQuartiles.has(quartile)) {
-          // Generate meaningful placeholder based on time block
-          let placeholderName = "Planning & Review";
-          if (timeBlock.name === "PHYSICAL MENTAL") placeholderName = "Mindfulness Break";
-          else if (timeBlock.name === "WIND DOWN") placeholderName = "Relaxation";
-          else if (timeBlock.name === "Recover") placeholderName = "Recovery Time";
-          else if (timeBlock.name === "ENVIRONMENTAL") placeholderName = "Environmental Check";
-          else if (timeBlock.name === "HOUR OF POWER") placeholderName = "Power Focus";
-          else if (timeBlock.name === "CHIEF PROJECT") placeholderName = "Strategic Planning";
-          else if (timeBlock.name === "PRODUCTION WORK") placeholderName = "Focus Work";
-          else if (timeBlock.name === "COMPANY BLOCK") placeholderName = "Team Coordination";
-          else if (timeBlock.name === "BUSINESS AUTOMATION") placeholderName = "Process Improvement";
-          
+          // Create empty entry without placeholder task name
           finalEntries.push({
             date,
             timeBlock: timeBlock.name,
             quartile,
             plannedTaskId: null,
             status: 'not_started' as const,
-            reflection: `PLACEHOLDER:${placeholderName}`
+            reflection: null
           });
         }
       }

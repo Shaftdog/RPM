@@ -157,18 +157,8 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
           if (taskIndex > -1) {
             availableTasks.splice(taskIndex, 1);
           }
-        } else {
-          // Add meaningful placeholder content
-          let placeholderName = "Planning & Review";
-          if (block.name === "PHYSICAL MENTAL") placeholderName = "Mindfulness Break";
-          else if (block.name === "WIND DOWN") placeholderName = "Relaxation";
-          else if (block.name === "Recover") placeholderName = "Recovery Time";
-          
-          schedule[block.name][quarterKey].push({
-            taskName: placeholderName,
-            durationMinutes: quarterDuration
-          });
         }
+        // Don't create placeholder tasks - leave empty slots empty
       }
     }
     
@@ -218,9 +208,6 @@ export async function generateDailySchedule(
     return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
   }
 
-  // TEMPORARY DEBUG: Force local scheduler to test if the issue is with OpenAI response
-  console.log("DEBUG: Temporarily using local scheduler to test functionality");
-  return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
 
   try {
     // Include ALL tasks and recurring tasks - no arbitrary limits
