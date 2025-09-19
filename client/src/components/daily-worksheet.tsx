@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const TIME_BLOCKS = [
   { name: "Recover", time: "12am-7am", quartiles: 4 },
@@ -137,6 +138,27 @@ export default function DailyWorksheet() {
         title: "Failed to update schedule",
         description: error.message,
         variant: "destructive",
+      });
+    },
+  });
+
+  // Create update task status mutation for regular tasks
+  const updateTaskStatusMutation = useMutation({
+    mutationFn: async (data: { taskId: string; status: string; xDate?: string }) => {
+      const response = await apiRequest("PUT", `/api/tasks/${data.taskId}`, {
+        status: data.status,
+        ...(data.xDate && { xDate: data.xDate })
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update task",
+        description: error.message,
+        variant: "destructive"
       });
     },
   });
@@ -324,6 +346,9 @@ export default function DailyWorksheet() {
     
     // 2. Add matching recurring tasks that aren't already active
     const matchingRecurring = recurringTasks.filter(rt => {
+      // Don't show recurring tasks if this entry is already completed
+      if (entry?.status === 'completed') return false;
+      
       // Must match time block
       if (rt.timeBlock !== timeBlock) return false;
       
@@ -540,6 +565,7 @@ export default function DailyWorksheet() {
                                   updateScheduleMutation.mutate({
                                     id: entry.id,
                                     actualTaskId: taskId,
+                                    status: 'not_started', // Reset status when selecting new task
                                   });
                                 }
                               }}
@@ -572,6 +598,7 @@ export default function DailyWorksheet() {
                                         updateScheduleMutation.mutate({
                                           id: entry.id,
                                           actualTaskId: task.id,
+                                          status: 'not_started', // Reset status when selecting new task
                                         });
                                       } else if (task.type === 'recurring') {
                                         // Set recurring task as active by storing it in reflection field
@@ -580,6 +607,7 @@ export default function DailyWorksheet() {
                                           actualTaskId: undefined,
                                           plannedTaskId: undefined,
                                           reflection: `RECURRING_TASK:${task.name}`,
+                                          status: 'not_started', // Reset status when selecting new task
                                         });
                                       }
                                     }
@@ -603,10 +631,78 @@ export default function DailyWorksheet() {
                                     </span>
                                   )}
                                   
-                                  {/* Active indicator */}
-                                  {task.isActive && (
-                                    <span className="text-xs text-primary flex-shrink-0">✓</span>
-                                  )}
+                                  {/* Completion checkbox - only show for active tasks */}
+                                  {task.isActive ? (
+                                    <div onClick={(e) => e.stopPropagation()}>
+                                      <Checkbox 
+                                      checked={false}
+                                      disabled={updateScheduleMutation.isPending || updateTaskStatusMutation.isPending}
+                                      onCheckedChange={(checked) => {
+                                        if (checked && entry?.id) {
+                                          // Mark task as completed and remove from quarter
+                                          if (task.type === 'regular') {
+                                            // For regular tasks, update both schedule entry and task status
+                                            updateScheduleMutation.mutate({
+                                              id: entry.id,
+                                              actualTaskId: undefined,
+                                              plannedTaskId: undefined,
+                                              status: 'completed',
+                                            });
+                                            // Also update the underlying task status for calorie calculations
+                                            updateTaskStatusMutation.mutate({
+                                              taskId: task.id,
+                                              status: 'completed',
+                                              xDate: selectedDate
+                                            });
+                                          } else if (task.type === 'recurring') {
+                                            // Handle recurring tasks - check if it's part of MULTIPLE_TASKS
+                                            if (entry.reflection?.startsWith('MULTIPLE_TASKS:')) {
+                                              // Remove only this task from the multiple tasks list
+                                              const taskNamesStr = entry.reflection.replace('MULTIPLE_TASKS:', '');
+                                              const taskNames = taskNamesStr.split('|');
+                                              const remainingTasks = taskNames.filter(name => name.trim() !== task.name);
+                                              
+                                              if (remainingTasks.length === 0) {
+                                                // No tasks left, mark entry as completed
+                                                updateScheduleMutation.mutate({
+                                                  id: entry.id,
+                                                  actualTaskId: undefined,
+                                                  plannedTaskId: undefined,
+                                                  reflection: undefined,
+                                                  status: 'completed',
+                                                });
+                                              } else if (remainingTasks.length === 1) {
+                                                // One task left, convert to single recurring task
+                                                updateScheduleMutation.mutate({
+                                                  id: entry.id,
+                                                  reflection: `RECURRING_TASK:${remainingTasks[0]}`,
+                                                });
+                                              } else {
+                                                // Multiple tasks still remain
+                                                updateScheduleMutation.mutate({
+                                                  id: entry.id,
+                                                  reflection: `MULTIPLE_TASKS:${remainingTasks.join('|')}`,
+                                                  status: 'not_started', // Keep status as not_started when tasks remain
+                                                });
+                                              }
+                                            } else {
+                                              // Single recurring task, mark schedule entry as completed
+                                              updateScheduleMutation.mutate({
+                                                id: entry.id,
+                                                actualTaskId: undefined,
+                                                plannedTaskId: undefined,
+                                                reflection: undefined,
+                                                status: 'completed',
+                                              });
+                                            }
+                                          }
+                                        }
+                                      }}
+                                      className="w-3 h-3 flex-shrink-0"
+                                      data-testid={`checkbox-complete-${block.name}-${quartile}-${taskIndex}`}
+                                      />
+                                    </div>
+                                  ) : null}
                                 </div>
                               ))}
                               
