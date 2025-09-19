@@ -264,7 +264,14 @@ export default function DailyWorksheet() {
     const selectedDateObj = new Date(selectedDate);
     const dayOfWeek = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
     
-    const candidates = [];
+    const candidates: Array<{
+      id: string;
+      name: string;
+      type: 'regular' | 'recurring';
+      isActive: boolean;
+      source: string;
+      durationMinutes?: number;
+    }> = [];
     
     // 1. Add currently active/selected task if it exists and isn't a placeholder
     if (entry && !entry.reflection?.startsWith('PLACEHOLDER:')) {
@@ -555,8 +562,8 @@ export default function DailyWorksheet() {
                                         // Set recurring task as active by storing it in reflection field
                                         updateScheduleMutation.mutate({
                                           id: entry.id,
-                                          actualTaskId: null,
-                                          plannedTaskId: null,
+                                          actualTaskId: undefined,
+                                          plannedTaskId: undefined,
                                           reflection: `RECURRING_TASK:${task.name}`,
                                         });
                                       }
