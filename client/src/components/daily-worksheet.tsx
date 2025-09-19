@@ -100,7 +100,7 @@ export default function DailyWorksheet() {
 
   const generateScheduleMutation = useMutation({
     mutationFn: async (date: string) => {
-      const response = await apiRequest("POST", "/api/daily/schedule/generate", { date });
+      const response = await apiRequest("POST", "/api/daily/generate", { date });
       return response.json();
     },
     onSuccess: () => {
