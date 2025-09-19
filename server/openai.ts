@@ -219,8 +219,8 @@ export async function generateDailySchedule(
   }
 
   try {
-    // Trim inputs to essentials for smaller payload
-    const trimmedTasks = filteredTasks.slice(0, 20).map(t => ({
+    // Include ALL tasks and recurring tasks - no arbitrary limits
+    const trimmedTasks = filteredTasks.map(t => ({
       id: t.id,
       name: t.name,
       priority: t.priority,
@@ -229,7 +229,8 @@ export async function generateDailySchedule(
       subcategory: t.subcategory
     }));
 
-    const trimmedRecurring = recurringTasks.slice(0, 10).map(rt => ({
+    // Include ALL recurring tasks - no limit
+    const trimmedRecurring = recurringTasks.map(rt => ({
       taskName: rt.taskName,
       timeBlock: rt.timeBlock,
       quarter: rt.quarter,
@@ -238,27 +239,26 @@ export async function generateDailySchedule(
     }));
 
     const prompt = `
-    Generate a daily schedule using ONLY the provided tasks - DO NOT invent or create new tasks.
+    Generate a daily schedule that includes ALL recurring tasks plus available regular tasks.
     
     Available Tasks: ${JSON.stringify(trimmedTasks)}
-    Recurring Tasks: ${JSON.stringify(trimmedRecurring)}
+    Recurring Tasks (ALL MUST BE SCHEDULED): ${JSON.stringify(trimmedRecurring)}
     User Preferences: ${JSON.stringify(userPreferences)}
     
     Time Blocks: Recover, PHYSICAL MENTAL, CHIEF PROJECT, HOUR OF POWER, PRODUCTION WORK, COMPANY BLOCK, BUSINESS AUTOMATION, ENVIRONMENTAL, FLEXIBLE BLOCK, WIND DOWN
     
-    STRICT REQUIREMENTS:
-    1. ONLY use tasks from the "Available Tasks" and "Recurring Tasks" lists above
-    2. DO NOT create, invent, or make up any new task names
-    3. Place recurring tasks in their designated time block/quarter if specified
-    4. Distribute remaining available tasks by priority (High=early, Medium=middle, Low=later)
+    CRITICAL REQUIREMENTS:
+    1. YOU MUST SCHEDULE EVERY SINGLE RECURRING TASK from the "Recurring Tasks" list above
+    2. Each recurring task must be placed in its designated timeBlock and quarter if specified
+    3. ONLY use exact task names from the provided lists - DO NOT create or invent new tasks
+    4. After placing ALL recurring tasks, fill remaining slots with available tasks by priority
     5. If no tasks are available for a quartile, simply omit that quartile from the JSON
-    6. DO NOT add generic activities like "planning", "review", or "email" unless they exist in the provided task lists
     
-    Task Distribution:
-    - Recurring tasks: exact time block and quarter as specified
-    - High priority: early quartiles (Q1, Q2)  
-    - Medium priority: middle quartiles (Q2, Q3)
-    - Low priority: later quartiles (Q3, Q4)
+    Task Placement Priority:
+    1. FIRST: All recurring tasks in their designated time blocks/quarters
+    2. THEN: High priority tasks in early quartiles (Q1, Q2)
+    3. THEN: Medium priority tasks in middle quartiles (Q2, Q3)
+    4. THEN: Low priority tasks in later quartiles (Q3, Q4)
     
     Return JSON format (only include quartiles that have actual tasks):
     {
