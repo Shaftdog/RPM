@@ -498,62 +498,97 @@ export default function DailyWorksheet() {
                   {Array.from({ length: block.quartiles }, (_, index) => {
                     const quartile = index + 1;
                     const entry = getScheduleEntry(block.name, quartile);
-                    const timeRange = block.time.includes('AM') || block.time.includes('PM') 
-                      ? `Q${quartile}` 
-                      : `Q${quartile}`;
+                    const candidates = getCandidateTasksForQuarter(block.name, quartile);
+                    const visibleTasks = candidates.slice(0, 4); // Show max 4 tasks
+                    const hiddenCount = Math.max(0, candidates.length - 4);
                     
                     return (
-                      <div key={quartile} className={`bg-card p-3 ${entry?.status === 'in_progress' ? 'border-2 border-primary' : ''}`}>
-                        <div className={`text-xs mb-2 ${entry?.status === 'in_progress' ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
-                          {timeRange} {entry?.status === 'in_progress' && '• ACTIVE'}
+                      <div key={quartile} className={`bg-card p-2 ${entry?.status === 'in_progress' ? 'border-2 border-primary' : ''}`}>
+                        {/* Compact header */}
+                        <div className={`text-xs mb-2 font-medium ${entry?.status === 'in_progress' ? 'text-primary' : 'text-muted-foreground'}`}>
+                          Q{quartile} {entry?.status === 'in_progress' && '• ACTIVE'}
                         </div>
-                        {/* Display recurring task name if stored in reflection field (but not placeholders) */}
-                        {!entry?.actualTaskId && !entry?.plannedTaskId && entry?.reflection?.startsWith('RECURRING_TASK:') && !entry?.reflection?.startsWith('PLACEHOLDER:') ? (
-                          <div className="w-full text-xs mb-2 p-2 bg-secondary rounded flex items-center gap-1">
-                            <span className="text-muted-foreground">⟲</span>
-                            <span>{getTaskNameForEntry(entry)}</span>
-                          </div>
-                        ) : (
-                          <Select 
-                            value={entry?.actualTaskId || entry?.plannedTaskId || ""} 
-                            onValueChange={(taskId) => {
-                              if (entry?.id) {
-                                updateScheduleMutation.mutate({
-                                  id: entry.id,
-                                  actualTaskId: taskId,
-                                });
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="w-full text-xs mb-2" data-testid={`select-task-${block.name}-${quartile}`}>
-                              <SelectValue placeholder="Select task..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {tasks.map((task) => (
-                                <SelectItem key={task.id} value={task.id}>
-                                  {task.name}
-                                </SelectItem>
+                        
+                        {/* Task stack */}
+                        <div className="space-y-1">
+                          {visibleTasks.length === 0 ? (
+                            // Empty quarter - show compact task selector
+                            <Select 
+                              value={entry?.actualTaskId || entry?.plannedTaskId || ""} 
+                              onValueChange={(taskId) => {
+                                if (entry?.id) {
+                                  updateScheduleMutation.mutate({
+                                    id: entry.id,
+                                    actualTaskId: taskId,
+                                  });
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="w-full text-xs h-6" data-testid={`select-task-${block.name}-${quartile}`}>
+                                <SelectValue placeholder="Select task..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {tasks.map((task) => (
+                                  <SelectItem key={task.id} value={task.id}>
+                                    {task.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            // Show task rows
+                            <>
+                              {visibleTasks.map((task, taskIndex) => (
+                                <div
+                                  key={task.id}
+                                  className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover:bg-secondary/50 ${
+                                    task.isActive ? 'bg-primary/10 border border-primary/20' : ''
+                                  }`}
+                                  onClick={() => {
+                                    if (entry?.id && task.type === 'regular') {
+                                      updateScheduleMutation.mutate({
+                                        id: entry.id,
+                                        actualTaskId: task.id,
+                                      });
+                                    }
+                                  }}
+                                  data-testid={`row-task-${block.name}-${quartile}-${taskIndex}`}
+                                >
+                                  {/* Icon */}
+                                  <span className="text-muted-foreground text-xs w-3 flex-shrink-0">
+                                    {task.type === 'recurring' ? '⟲' : '•'}
+                                  </span>
+                                  
+                                  {/* Task name */}
+                                  <span className="flex-1 truncate line-clamp-1" title={task.name}>
+                                    {task.name}
+                                  </span>
+                                  
+                                  {/* Duration for recurring tasks */}
+                                  {task.durationMinutes && (
+                                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                                      {task.durationMinutes}m
+                                    </span>
+                                  )}
+                                  
+                                  {/* Active indicator */}
+                                  {task.isActive && (
+                                    <span className="text-xs text-primary flex-shrink-0">✓</span>
+                                  )}
+                                </div>
                               ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                        <div className="text-xs">
-                          <div className="text-muted-foreground mb-1">Status:</div>
-                          <Badge 
-                            variant={
-                              entry?.status === 'completed' ? 'default' :
-                              entry?.status === 'in_progress' ? 'secondary' : 'outline'
-                            }
-                            className={
-                              entry?.status === 'completed' ? 'bg-business text-business-foreground' :
-                              entry?.status === 'in_progress' ? 'bg-primary text-primary-foreground' :
-                              'bg-secondary text-secondary-foreground'
-                            }
-                            data-testid={`status-${block.name}-${quartile}`}
-                          >
-                            {entry?.status === 'completed' ? 'Completed' :
-                             entry?.status === 'in_progress' ? 'In Progress' : 'Planned'}
-                          </Badge>
+                              
+                              {/* Overflow indicator */}
+                              {hiddenCount > 0 && (
+                                <div 
+                                  className="flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover:bg-secondary/50 text-muted-foreground"
+                                  data-testid={`button-more-tasks-${block.name}-${quartile}`}
+                                >
+                                  <span className="text-xs">+{hiddenCount} more...</span>
+                                </div>
+                              )}
+                            </>
+                          )}
                         </div>
                       </div>
                     );
