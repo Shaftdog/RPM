@@ -387,11 +387,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const [timeBlockName, quartiles] of Object.entries(aiSchedule)) {
         if (timeBlockName === 'source' || !quartiles || typeof quartiles !== 'object') continue;
         
-        // Process each quartile (Q1, Q2, Q3, Q4)
+        // Extract the base time block name (remove time range in parentheses)
+        const baseTimeBlockName = timeBlockName.replace(/\s*\([^)]*\)/g, '').trim();
+        
+        // Process each quartile (Q1, Q2, Q3, Q4 or Quarter 1, Quarter 2, etc.)
         for (const [quartileKey, tasks] of Object.entries(quartiles as any)) {
-          if (!quartileKey.startsWith('Q')) continue;
+          let quartileNum: number;
           
-          const quartileNum = parseInt(quartileKey.substring(1));
+          if (quartileKey.startsWith('Q')) {
+            // Format: Q1, Q2, Q3, Q4
+            quartileNum = parseInt(quartileKey.substring(1));
+          } else if (quartileKey.startsWith('Quarter ')) {
+            // Format: Quarter 1, Quarter 2, Quarter 3, Quarter 4
+            quartileNum = parseInt(quartileKey.substring(8));
+          } else {
+            continue;
+          }
+          
           if (isNaN(quartileNum) || quartileNum < 1 || quartileNum > 4) continue;
           
           // Handle different task formats
@@ -418,7 +430,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Create entry even if no task ID (for recurring tasks)
           entries.push({
             date,
-            timeBlock: timeBlockName,
+            timeBlock: baseTimeBlockName,
             quartile: quartileNum,
             plannedTaskId: taskId || null,
             status: 'not_started' as const
