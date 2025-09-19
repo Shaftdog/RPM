@@ -208,7 +208,11 @@ export async function generateDailySchedule(
     return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
   }
 
+  // Temporarily disable OpenAI to avoid timeout issues until we fix the API response
+  console.log("Using local scheduler to avoid OpenAI timeout issues");
+  return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
 
+  /*
   try {
     // Include ALL tasks and recurring tasks - no arbitrary limits
     const trimmedTasks = filteredTasks.map(t => ({
@@ -296,6 +300,7 @@ export async function generateDailySchedule(
     console.log("Falling back to local scheduler");
     return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
   }
+  */
 }
 
 export async function processAICommand(
