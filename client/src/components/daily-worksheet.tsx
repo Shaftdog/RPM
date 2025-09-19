@@ -144,15 +144,19 @@ export default function DailyWorksheet() {
 
   // Create update task status mutation for regular tasks
   const updateTaskStatusMutation = useMutation({
-    mutationFn: async (data: { taskId: string; status: string; xDate?: string }) => {
+    mutationFn: async (data: { taskId: string; status: string; xDate?: string; scheduleUpdateData?: any }) => {
       const response = await apiRequest("PUT", `/api/tasks/${data.taskId}`, {
         status: data.status,
         ...(data.xDate && { xDate: data.xDate })
       });
-      return response.json();
+      return { taskResponse: response.json(), scheduleUpdateData: data.scheduleUpdateData };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+      // If there's schedule update data, chain the schedule update
+      if (data.scheduleUpdateData) {
+        updateScheduleMutation.mutate(data.scheduleUpdateData);
+      }
     },
     onError: (error) => {
       toast({
@@ -295,8 +299,8 @@ export default function DailyWorksheet() {
       durationMinutes?: number;
     }> = [];
     
-    // 1. Add currently active/selected task if it exists and isn't a placeholder
-    if (entry && !entry.reflection?.startsWith('PLACEHOLDER:')) {
+    // 1. Add currently active/selected task if it exists and isn't a placeholder or completed
+    if (entry && !entry.reflection?.startsWith('PLACEHOLDER:') && entry.status !== 'completed') {
       if (entry.actualTaskId) {
         const task = tasks.find(t => t.id === entry.actualTaskId);
         if (task) {
@@ -641,18 +645,17 @@ export default function DailyWorksheet() {
                                         if (checked && entry?.id) {
                                           // Mark task as completed and remove from quarter
                                           if (task.type === 'regular') {
-                                            // For regular tasks, update both schedule entry and task status
-                                            updateScheduleMutation.mutate({
-                                              id: entry.id,
-                                              actualTaskId: undefined,
-                                              plannedTaskId: undefined,
-                                              status: 'completed',
-                                            });
-                                            // Also update the underlying task status for calorie calculations
+                                            // For regular tasks, update task status first, then chain schedule update
                                             updateTaskStatusMutation.mutate({
                                               taskId: task.id,
                                               status: 'completed',
-                                              xDate: selectedDate
+                                              xDate: new Date(selectedDate + 'T00:00:00.000Z').toISOString(),
+                                              scheduleUpdateData: {
+                                                id: entry.id,
+                                                actualTaskId: undefined,
+                                                plannedTaskId: undefined,
+                                                status: 'completed',
+                                              }
                                             });
                                           } else if (task.type === 'recurring') {
                                             // Handle recurring tasks - check if it's part of MULTIPLE_TASKS
