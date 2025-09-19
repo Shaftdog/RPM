@@ -346,6 +346,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   ): Array<{ date: Date; timeBlock: string; quartile: number; plannedTaskId?: string; status: 'not_started' }> {
     const entries = [];
     
+    // Log the structure for debugging
+    console.log('AI Schedule structure:', JSON.stringify(aiSchedule, null, 2).substring(0, 500));
+    
     // Handle array format (local fallback or structured response)
     if (Array.isArray(aiSchedule.schedule)) {
       for (const block of aiSchedule.schedule) {
@@ -379,6 +382,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } 
     // Handle flat object format (current OpenAI response)
+    else if (aiSchedule.source === 'openai') {
+      // OpenAI returns time blocks as keys with Q1, Q2, Q3, Q4 as sub-keys
+      for (const [timeBlockName, quartiles] of Object.entries(aiSchedule)) {
+        if (timeBlockName === 'source' || !quartiles || typeof quartiles !== 'object') continue;
+        
+        // Process each quartile (Q1, Q2, Q3, Q4)
+        for (const [quartileKey, tasks] of Object.entries(quartiles as any)) {
+          if (!quartileKey.startsWith('Q')) continue;
+          
+          const quartileNum = parseInt(quartileKey.substring(1));
+          if (isNaN(quartileNum) || quartileNum < 1 || quartileNum > 4) continue;
+          
+          // Handle different task formats
+          let taskData = tasks as any;
+          let taskId: string | undefined;
+          
+          if (Array.isArray(taskData) && taskData.length > 0) {
+            // If it's an array, take the first task
+            taskData = taskData[0];
+          }
+          
+          if (typeof taskData === 'string') {
+            // Task name as string - look it up
+            taskId = resolveTaskIdByName(taskData, nameToId);
+          } else if (taskData && typeof taskData === 'object') {
+            // Task object
+            if (taskData.id) {
+              taskId = taskData.id;
+            } else if (taskData.taskName || taskData.name) {
+              taskId = resolveTaskIdByName(taskData.taskName || taskData.name, nameToId);
+            }
+          }
+          
+          // Create entry even if no task ID (for recurring tasks)
+          entries.push({
+            date,
+            timeBlock: timeBlockName,
+            quartile: quartileNum,
+            plannedTaskId: taskId || null,
+            status: 'not_started' as const
+          });
+        }
+      }
+    }
+    // Handle other flat object formats
     else {
       for (const [timeRange, val] of Object.entries(aiSchedule)) {
         if (timeRange === 'source') continue; // Skip metadata
