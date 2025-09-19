@@ -234,6 +234,11 @@ export default function DailyWorksheet() {
   const getTaskNameForEntry = (entry: DailyScheduleEntry | undefined): string => {
     if (!entry) return "";
     
+    // Skip placeholder entries - these are system-generated fillers, not real tasks
+    if (entry.reflection && entry.reflection.startsWith('PLACEHOLDER:')) {
+      return "";
+    }
+    
     // First try to find a regular task
     if (entry.actualTaskId) {
       const task = tasks.find(t => t.id === entry.actualTaskId);
@@ -424,8 +429,8 @@ export default function DailyWorksheet() {
                         <div className={`text-xs mb-2 ${entry?.status === 'in_progress' ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
                           {timeRange} {entry?.status === 'in_progress' && '• ACTIVE'}
                         </div>
-                        {/* Display recurring task name if stored in reflection field */}
-                        {!entry?.actualTaskId && !entry?.plannedTaskId && entry?.reflection?.startsWith('RECURRING_TASK:') ? (
+                        {/* Display recurring task name if stored in reflection field (but not placeholders) */}
+                        {!entry?.actualTaskId && !entry?.plannedTaskId && entry?.reflection?.startsWith('RECURRING_TASK:') && !entry?.reflection?.startsWith('PLACEHOLDER:') ? (
                           <div className="w-full text-xs mb-2 p-2 bg-secondary rounded flex items-center gap-1">
                             <span className="text-muted-foreground">⟲</span>
                             <span>{getTaskNameForEntry(entry)}</span>
