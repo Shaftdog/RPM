@@ -1108,20 +1108,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         daysOfWeek: rt.daysOfWeek,
         durationMinutes: rt.durationMinutes,
         // Also try snake_case in case that's what's actually being returned
-        taskName_alt: rt.task_name,
-        timeBlock_alt: rt.time_block,
-        quarter_alt: rt.quartile
+        taskName_alt: (rt as any).task_name,
+        timeBlock_alt: (rt as any).time_block,
+        quarter_alt: (rt as any).quartile
       }));
       
       res.json({
         total: recurringTasks.length,
         rawFirstTask: recurringTasks[0],
         mappedTasks: testMapping.slice(0, 5), // First 5 for debugging
-        allTaskNames: recurringTasks.map(rt => rt.taskName || rt.task_name || 'MISSING_NAME')
+        allTaskNames: recurringTasks.map(rt => rt.taskName || (rt as any).task_name || 'MISSING_NAME')
       });
     } catch (error) {
       console.error("Debug endpoint error:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
