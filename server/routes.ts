@@ -366,15 +366,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const task = taskList[i];
           const taskId = task.id || resolveTaskIdByName(task.name, nameToId);
           
-          if (taskId) {
-            entries.push({
-              date,
-              timeBlock: block.timeBlock,
-              quartile: i + 1,
-              plannedTaskId: taskId,
-              status: 'not_started' as const
-            });
-          }
+          // Create entry even if no task ID (for recurring tasks)
+          // plannedTaskId can be null for recurring tasks that don't have a corresponding task entry
+          entries.push({
+            date,
+            timeBlock: block.timeBlock,
+            quartile: i + 1,
+            plannedTaskId: taskId || null,
+            status: 'not_started' as const
+          });
         }
       }
     } 
@@ -402,15 +402,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           taskId = resolveTaskIdByName(valAny.assignedTask, nameToId);
         }
         
-        if (taskId) {
-          entries.push({
-            date,
-            timeBlock,
-            quartile,
-            plannedTaskId: taskId,
-            status: 'not_started' as const
-          });
-        }
+        // Create entry even if no task ID (for recurring tasks)
+        entries.push({
+          date,
+          timeBlock,
+          quartile,
+          plannedTaskId: taskId || null,
+          status: 'not_started' as const
+        });
       }
     }
     
@@ -482,6 +481,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // This ensures no Milestones can slip through via direct ID references
       const allowedIdSet = new Set(tasksForScheduling.map(task => task.id));
       const filteredScheduleEntries = scheduleEntries.filter(entry => 
+        // Allow entries with no task ID (recurring tasks) or valid task IDs
         !entry.plannedTaskId || allowedIdSet.has(entry.plannedTaskId)
       );
       
