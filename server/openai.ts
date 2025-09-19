@@ -238,40 +238,34 @@ export async function generateDailySchedule(
     }));
 
     const prompt = `
-    Generate a COMPREHENSIVE daily schedule that fills ALL 10 time blocks with ALL 4 quartiles each (40 total quartiles).
+    Generate a daily schedule using ONLY the provided tasks - DO NOT invent or create new tasks.
     
     Available Tasks: ${JSON.stringify(trimmedTasks)}
     Recurring Tasks: ${JSON.stringify(trimmedRecurring)}
     User Preferences: ${JSON.stringify(userPreferences)}
     
-    Time Blocks (ALL 10 MUST have content): 
-    1. Recover - 2. PHYSICAL MENTAL - 3. CHIEF PROJECT - 4. HOUR OF POWER - 5. PRODUCTION WORK 
-    6. COMPANY BLOCK - 7. BUSINESS AUTOMATION - 8. ENVIRONMENTAL - 9. FLEXIBLE BLOCK - 10. WIND DOWN
+    Time Blocks: Recover, PHYSICAL MENTAL, CHIEF PROJECT, HOUR OF POWER, PRODUCTION WORK, COMPANY BLOCK, BUSINESS AUTOMATION, ENVIRONMENTAL, FLEXIBLE BLOCK, WIND DOWN
     
-    MANDATORY REQUIREMENTS:
-    1. ALL 10 time blocks MUST appear in your response
-    2. EACH time block MUST have exactly 4 quartiles (Q1, Q2, Q3, Q4)
-    3. EVERY recurring task MUST be placed in its designated time block/quarter
-    4. Fill ALL remaining empty quartiles with available tasks
-    5. If you run out of unique tasks, repeat high-priority tasks or break large tasks into smaller parts
-    6. NO quartile should be left empty - use "planning", "review", or "break" activities if needed
+    STRICT REQUIREMENTS:
+    1. ONLY use tasks from the "Available Tasks" and "Recurring Tasks" lists above
+    2. DO NOT create, invent, or make up any new task names
+    3. Place recurring tasks in their designated time block/quarter if specified
+    4. Distribute remaining available tasks by priority (High=early, Medium=middle, Low=later)
+    5. If no tasks are available for a quartile, simply omit that quartile from the JSON
+    6. DO NOT add generic activities like "planning", "review", or "email" unless they exist in the provided task lists
     
-    Task Distribution Rules:
+    Task Distribution:
     - Recurring tasks: exact time block and quarter as specified
-    - High priority tasks: early quartiles (Q1, Q2)  
+    - High priority: early quartiles (Q1, Q2)  
     - Medium priority: middle quartiles (Q2, Q3)
     - Low priority: later quartiles (Q3, Q4)
-    - Fill gaps with: planning time, email review, breaks, or task continuation
     
-    EXACT JSON format required:
+    Return JSON format (only include quartiles that have actual tasks):
     {
-      "Recover": {
-        "Q1": [{"taskName": "Task Name", "durationMinutes": 15}],
-        "Q2": [{"taskName": "Another Task", "durationMinutes": 15}],
-        "Q3": [{"taskName": "More Tasks", "durationMinutes": 15}],
-        "Q4": [{"taskName": "Final Task", "durationMinutes": 15}]
-      },
-      ... continue for ALL 10 time blocks
+      "TIME_BLOCK_NAME": {
+        "Q1": [{"taskName": "Exact Task Name from Lists", "durationMinutes": 30}],
+        "Q2": [{"taskName": "Another Exact Task Name", "durationMinutes": 30}]
+      }
     }
     `;
 
