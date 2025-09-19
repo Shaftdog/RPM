@@ -56,6 +56,20 @@ export const statusEnum = pgEnum("status", ["not_started", "in_progress", "compl
 export const scheduleTypeEnum = pgEnum("schedule_type", ["weekly", "monthly", "quarterly", "yearly"]);
 export const weekOfMonthEnum = pgEnum("week_of_month", ["1", "2", "3", "4", "last"]);
 
+// Centralized time blocks definition - used across AI prompt, local scheduler, and UI
+export const TIME_BLOCKS = [
+  { name: "Recover", start: "6:00", end: "7:00" },
+  { name: "PHYSICAL MENTAL", start: "7:00", end: "9:00" },
+  { name: "CHIEF PROJECT", start: "9:00", end: "11:00" },
+  { name: "HOUR OF POWER", start: "11:00", end: "12:00" },
+  { name: "PRODUCTION WORK", start: "12:00", end: "13:00" },
+  { name: "COMPANY BLOCK", start: "13:00", end: "14:00" },
+  { name: "BUSINESS AUTOMATION", start: "14:00", end: "15:00" },
+  { name: "ENVIRONMENTAL", start: "15:00", end: "16:00" },
+  { name: "FLEXIBLE BLOCK", start: "16:00", end: "19:00" },
+  { name: "WIND DOWN", start: "19:00", end: "21:00" }
+] as const;
+
 // Tasks table
 export const tasks = pgTable("tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

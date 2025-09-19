@@ -91,15 +91,18 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
     }>;
   }> = [];
   
-  // Match the exact schema structure that OpenAI returns
+  // Complete list of all time blocks
   const timeBlocks = [
-    { name: "HOUR OF POWER", start: "9:00", end: "10:00" },
-    { name: "CHIEF PROJECT", start: "10:00", end: "12:00" },
+    { name: "Recover", start: "6:00", end: "7:00" },
+    { name: "PHYSICAL MENTAL", start: "7:00", end: "9:00" },
+    { name: "CHIEF PROJECT", start: "9:00", end: "11:00" },
+    { name: "HOUR OF POWER", start: "11:00", end: "12:00" },
     { name: "PRODUCTION WORK", start: "12:00", end: "13:00" },
     { name: "COMPANY BLOCK", start: "13:00", end: "14:00" },
     { name: "BUSINESS AUTOMATION", start: "14:00", end: "15:00" },
-    { name: "PHYSICAL MENTAL", start: "15:00", end: "16:00" },
-    { name: "FLEXIBLE BLOCK", start: "16:00", end: "17:00" }
+    { name: "ENVIRONMENTAL", start: "15:00", end: "16:00" },
+    { name: "FLEXIBLE BLOCK", start: "16:00", end: "19:00" },
+    { name: "WIND DOWN", start: "19:00", end: "21:00" }
   ];
   
   // Get current day of week for recurring task filtering
@@ -174,7 +177,14 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
         } else if (block.name === "FLEXIBLE BLOCK" && availableTasks.some(t => t.priority === "Low")) {
           targetTask = availableTasks.find(t => t.priority === "Low");
         } else if (availableTasks.length > 0) {
-          targetTask = availableTasks[0]; // Any remaining task
+          // Prioritize High priority tasks for early blocks, Medium for middle, Low for later
+          if (i < 2 && availableTasks.some(t => t.priority === "High")) {
+            targetTask = availableTasks.find(t => t.priority === "High");
+          } else if (i === 2 && availableTasks.some(t => t.priority === "Medium")) {
+            targetTask = availableTasks.find(t => t.priority === "Medium");
+          } else {
+            targetTask = availableTasks[0]; // Any remaining task
+          }
         }
         
         if (targetTask) {
@@ -202,14 +212,22 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
       }
     }
     
-    // Filter out empty quartiles
-    const filledQuartiles = quartiles.filter(q => q !== undefined);
+    // Always show all 4 quartiles, fill empty ones with placeholder
+    const allQuartiles = [];
+    for (let i = 0; i < 4; i++) {
+      allQuartiles.push(quartiles[i] || {
+        task: null,
+        start: minutesToTime(blockStartMinutes + (i * quarterDuration)),
+        end: minutesToTime(blockStartMinutes + ((i + 1) * quarterDuration)),
+        allocatedTime: (quarterDuration / 60).toFixed(2)
+      });
+    }
     
     schedule.push({
       timeBlock: block.name,
       start: block.start,
       end: block.end,
-      quartiles: filledQuartiles
+      quartiles: allQuartiles
     });
   });
   
@@ -246,7 +264,7 @@ export async function generateDailySchedule(
     task.type !== 'Milestone' && task.type !== 'Sub-Milestone'
   );
   
-  const OPENAI_TIMEOUT_MS = 12000; // 12 second timeout
+  const OPENAI_TIMEOUT_MS = 18000; // 18 second timeout
   
   // Check if we have a valid OpenAI API key
   const hasValidKey = process.env.OPENAI_API_KEY && 
@@ -278,17 +296,41 @@ export async function generateDailySchedule(
     }));
 
     const prompt = `
-    Generate an optimized daily schedule based on:
+    Generate a COMPREHENSIVE daily schedule that fills ALL 10 time blocks with ALL 4 quartiles each (40 total quartiles).
     
     Available Tasks: ${JSON.stringify(trimmedTasks)}
     Recurring Tasks: ${JSON.stringify(trimmedRecurring)}
     User Preferences: ${JSON.stringify(userPreferences)}
     
-    Time Blocks: Recover, PHYSICAL MENTAL, CHIEF PROJECT, HOUR OF POWER, PRODUCTION WORK, COMPANY BLOCK, BUSINESS AUTOMATION, ENVIRONMENTAL, FLEXIBLE BLOCK, WIND DOWN
+    Time Blocks (ALL 10 MUST have content): 
+    1. Recover - 2. PHYSICAL MENTAL - 3. CHIEF PROJECT - 4. HOUR OF POWER - 5. PRODUCTION WORK 
+    6. COMPANY BLOCK - 7. BUSINESS AUTOMATION - 8. ENVIRONMENTAL - 9. FLEXIBLE BLOCK - 10. WIND DOWN
     
-    IMPORTANT: For recurring tasks, if they have a "quarter" field specified (1=Q1/First 25%, 2=Q2/Second 25%, 3=Q3/Third 25%, 4=Q4/Fourth 25%), place them in that specific quarter within their designated time block. This ensures consistent placement according to user preferences.
+    MANDATORY REQUIREMENTS:
+    1. ALL 10 time blocks MUST appear in your response
+    2. EACH time block MUST have exactly 4 quartiles (Q1, Q2, Q3, Q4)
+    3. EVERY recurring task MUST be placed in its designated time block/quarter
+    4. Fill ALL remaining empty quartiles with available tasks
+    5. If you run out of unique tasks, repeat high-priority tasks or break large tasks into smaller parts
+    6. NO quartile should be left empty - use "planning", "review", or "break" activities if needed
     
-    Return JSON with schedule structure mapping time blocks to quartiles with assigned tasks.
+    Task Distribution Rules:
+    - Recurring tasks: exact time block and quarter as specified
+    - High priority tasks: early quartiles (Q1, Q2)  
+    - Medium priority: middle quartiles (Q2, Q3)
+    - Low priority: later quartiles (Q3, Q4)
+    - Fill gaps with: planning time, email review, breaks, or task continuation
+    
+    EXACT JSON format required:
+    {
+      "Recover": {
+        "Q1": [{"taskName": "Task Name", "durationMinutes": 15}],
+        "Q2": [{"taskName": "Another Task", "durationMinutes": 15}],
+        "Q3": [{"taskName": "More Tasks", "durationMinutes": 15}],
+        "Q4": [{"taskName": "Final Task", "durationMinutes": 15}]
+      },
+      ... continue for ALL 10 time blocks
+    }
     `;
 
     // Create abort controller for timeout
