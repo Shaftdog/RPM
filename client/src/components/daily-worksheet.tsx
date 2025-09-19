@@ -548,11 +548,13 @@ export default function DailyWorksheet() {
                                 <SelectValue placeholder="Select task..." />
                               </SelectTrigger>
                               <SelectContent>
-                                {tasks.map((task) => (
-                                  <SelectItem key={task.id} value={task.id}>
-                                    {task.name}
-                                  </SelectItem>
-                                ))}
+                                {tasks
+                                  .filter(task => task.type === 'Task' || task.type === 'Subtask')
+                                  .map((task) => (
+                                    <SelectItem key={task.id} value={task.id}>
+                                      {task.name}
+                                    </SelectItem>
+                                  ))}
                               </SelectContent>
                             </Select>
                           ) : (
