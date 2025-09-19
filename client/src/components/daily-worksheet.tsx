@@ -545,11 +545,21 @@ export default function DailyWorksheet() {
                                     task.isActive ? 'bg-primary/10 border border-primary/20' : ''
                                   }`}
                                   onClick={() => {
-                                    if (entry?.id && task.type === 'regular') {
-                                      updateScheduleMutation.mutate({
-                                        id: entry.id,
-                                        actualTaskId: task.id,
-                                      });
+                                    if (entry?.id) {
+                                      if (task.type === 'regular') {
+                                        updateScheduleMutation.mutate({
+                                          id: entry.id,
+                                          actualTaskId: task.id,
+                                        });
+                                      } else if (task.type === 'recurring') {
+                                        // Set recurring task as active by storing it in reflection field
+                                        updateScheduleMutation.mutate({
+                                          id: entry.id,
+                                          actualTaskId: null,
+                                          plannedTaskId: null,
+                                          reflection: `RECURRING_TASK:${task.name}`,
+                                        });
+                                      }
                                     }
                                   }}
                                   data-testid={`row-task-${block.name}-${quartile}-${taskIndex}`}
