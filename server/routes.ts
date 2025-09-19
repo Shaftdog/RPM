@@ -396,59 +396,119 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } 
     // Handle flat object format (current OpenAI response)
-    else if (aiSchedule.source === 'openai') {
-      // OpenAI returns time blocks as keys with Q1, Q2, Q3, Q4 as sub-keys
-      for (const [timeBlockName, quartiles] of Object.entries(aiSchedule)) {
-        if (timeBlockName === 'source' || !quartiles || typeof quartiles !== 'object') continue;
+    else if (aiSchedule.source === 'openai' || aiSchedule.schedule) {
+      const scheduleData = aiSchedule.schedule || aiSchedule;
+      
+      // OpenAI returns nested structure: timeBlock -> timeRange -> quartiles
+      for (const [timeBlockName, timeBlockData] of Object.entries(scheduleData)) {
+        if (timeBlockName === 'source' || !timeBlockData || typeof timeBlockData !== 'object') continue;
         
         // Extract the base time block name (remove time range in parentheses)
         const baseTimeBlockName = timeBlockName.replace(/\s*\([^)]*\)/g, '').trim();
         
-        // Process each quartile (Q1, Q2, Q3, Q4 or Quarter 1, Quarter 2, etc.)
-        for (const [quartileKey, tasks] of Object.entries(quartiles as any)) {
-          let quartileNum: number;
-          
-          if (quartileKey.startsWith('Q')) {
-            // Format: Q1, Q2, Q3, Q4
-            quartileNum = parseInt(quartileKey.substring(1));
-          } else if (quartileKey.startsWith('Quarter ')) {
-            // Format: Quarter 1, Quarter 2, Quarter 3, Quarter 4
-            quartileNum = parseInt(quartileKey.substring(8));
-          } else {
-            continue;
-          }
-          
-          if (isNaN(quartileNum) || quartileNum < 1 || quartileNum > 4) continue;
-          
-          // Handle different task formats
-          let taskData = tasks as any;
-          let taskId: string | undefined;
-          
-          if (Array.isArray(taskData) && taskData.length > 0) {
-            // If it's an array, take the first task
-            taskData = taskData[0];
-          }
-          
-          if (typeof taskData === 'string') {
-            // Task name as string - look it up
-            taskId = resolveTaskIdByName(taskData, nameToId);
-          } else if (taskData && typeof taskData === 'object') {
-            // Task object
-            if (taskData.id) {
-              taskId = taskData.id;
-            } else if (taskData.taskName || taskData.name) {
-              taskId = resolveTaskIdByName(taskData.taskName || taskData.name, nameToId);
+        // Check if this has a nested time range structure
+        const firstKey = Object.keys(timeBlockData)[0];
+        const isNestedTimeRange = firstKey && firstKey.includes(':');
+        
+        if (isNestedTimeRange) {
+          // Handle nested structure: PHYSICAL MENTAL -> 7:00-9:00 -> Q1, Q2, etc.
+          for (const [timeRange, quartiles] of Object.entries(timeBlockData)) {
+            if (!quartiles || typeof quartiles !== 'object') continue;
+            
+            // Process each quartile
+            for (const [quartileKey, tasks] of Object.entries(quartiles as any)) {
+              let quartileNum: number;
+              
+              if (quartileKey.startsWith('Q')) {
+                // Format: Q1, Q2, Q3, Q4
+                quartileNum = parseInt(quartileKey.substring(1));
+              } else if (quartileKey.startsWith('Quarter ')) {
+                // Format: Quarter 1, Quarter 2, Quarter 3, Quarter 4
+                quartileNum = parseInt(quartileKey.substring(8));
+              } else {
+                continue;
+              }
+              
+              if (isNaN(quartileNum) || quartileNum < 1 || quartileNum > 4) continue;
+              
+              // Handle different task formats
+              let taskData = tasks as any;
+              let taskId: string | undefined;
+              
+              if (Array.isArray(taskData) && taskData.length > 0) {
+                // If it's an array, take the first task
+                taskData = taskData[0];
+              }
+              
+              if (typeof taskData === 'string') {
+                // Task name as string - look it up
+                taskId = resolveTaskIdByName(taskData, nameToId);
+              } else if (taskData && typeof taskData === 'object') {
+                // Task object
+                if (taskData.id) {
+                  taskId = taskData.id;
+                } else if (taskData.taskName || taskData.name) {
+                  taskId = resolveTaskIdByName(taskData.taskName || taskData.name, nameToId);
+                }
+              }
+              
+              // Create entry even if no task ID (for recurring tasks)
+              entries.push({
+                date,
+                timeBlock: baseTimeBlockName,
+                quartile: quartileNum,
+                plannedTaskId: taskId || null,
+                status: 'not_started' as const
+              });
             }
           }
-          
-          // Create entry even if no task ID (for recurring tasks)
-          entries.push({
-            date,
-            timeBlock: baseTimeBlockName,
-            quartile: quartileNum,
-            plannedTaskId: taskId || null,
-            status: 'not_started' as const
-          });
+        } else {
+          // Handle direct quartile structure without time range nesting
+          for (const [quartileKey, tasks] of Object.entries(timeBlockData as any)) {
+            let quartileNum: number;
+            
+            if (quartileKey.startsWith('Q')) {
+              // Format: Q1, Q2, Q3, Q4
+              quartileNum = parseInt(quartileKey.substring(1));
+            } else if (quartileKey.startsWith('Quarter ')) {
+              // Format: Quarter 1, Quarter 2, Quarter 3, Quarter 4
+              quartileNum = parseInt(quartileKey.substring(8));
+            } else {
+              continue;
+            }
+            
+            if (isNaN(quartileNum) || quartileNum < 1 || quartileNum > 4) continue;
+            
+            // Handle different task formats
+            let taskData = tasks as any;
+            let taskId: string | undefined;
+            
+            if (Array.isArray(taskData) && taskData.length > 0) {
+              // If it's an array, take the first task
+              taskData = taskData[0];
+            }
+            
+            if (typeof taskData === 'string') {
+              // Task name as string - look it up
+              taskId = resolveTaskIdByName(taskData, nameToId);
+            } else if (taskData && typeof taskData === 'object') {
+              // Task object
+              if (taskData.id) {
+                taskId = taskData.id;
+              } else if (taskData.taskName || taskData.name) {
+                taskId = resolveTaskIdByName(taskData.taskName || taskData.name, nameToId);
+              }
+            }
+            
+            // Create entry even if no task ID (for recurring tasks)
+            entries.push({
+              date,
+              timeBlock: baseTimeBlockName,
+              quartile: quartileNum,
+              plannedTaskId: taskId || null,
+              status: 'not_started' as const
+            });
+          }
         }
       }
     }
