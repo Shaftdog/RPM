@@ -262,7 +262,7 @@ export default function DailyWorksheet() {
   const getCandidateTasksForQuarter = (timeBlock: string, quartile: number) => {
     const entry = getScheduleEntry(timeBlock, quartile);
     const selectedDateObj = new Date(selectedDate);
-    const dayOfWeek = selectedDateObj.toLocaleDateString('en-US', { weekday: 'lowercase' });
+    const dayOfWeek = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
     
     const candidates = [];
     
