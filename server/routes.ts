@@ -9,7 +9,8 @@ import {
   insertRecurringTaskSchema, 
   insertRecurringScheduleSchema,
   insertTaskSkipSchema,
-  insertDailyScheduleSchema 
+  insertDailyScheduleSchema,
+  TIME_BLOCKS 
 } from "@shared/schema";
 import multer from "multer";
 import { z } from "zod";
@@ -286,23 +287,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Helper functions for AI schedule normalization
+  function parseTimeToMinutes(timeStr: string): number {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+  }
+  
   function mapStartTimeToCanonicalBlock(startTime: string): string {
-    const timeBlocks = [
-      { name: "Recover", start: "00:00", end: "07:00" },
-      { name: "PHYSICAL MENTAL", start: "07:00", end: "09:00" },
-      { name: "CHIEF PROJECT", start: "09:00", end: "11:00" },
-      { name: "HOUR OF POWER", start: "11:00", end: "12:00" },
-      { name: "PRODUCTION WORK", start: "12:00", end: "14:00" },
-      { name: "COMPANY BLOCK", start: "14:00", end: "16:00" },
-      { name: "BUSINESS AUTOMATION", start: "16:00", end: "18:00" },
-      { name: "ENVIRONMENTAL", start: "18:00", end: "20:00" },
-      { name: "FLEXIBLE BLOCK", start: "20:00", end: "22:00" },
-      { name: "WIND DOWN", start: "22:00", end: "24:00" },
-    ];
+    const startMinutes = parseTimeToMinutes(startTime);
     
-    // Find the time block that contains this start time
-    for (const block of timeBlocks) {
-      if (startTime >= block.start && startTime < block.end) {
+    // Use centralized TIME_BLOCKS definition to ensure consistency
+    for (const block of TIME_BLOCKS) {
+      const blockStartMinutes = parseTimeToMinutes(block.start);
+      const blockEndMinutes = parseTimeToMinutes(block.end);
+      
+      if (startMinutes >= blockStartMinutes && startMinutes < blockEndMinutes) {
         return block.name;
       }
     }
@@ -343,15 +341,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     aiSchedule: any, 
     date: Date, 
     nameToId: Map<string, string>
-  ): Array<{ date: Date; timeBlock: string; quartile: number; plannedTaskId?: string; status: 'not_started' }> {
+  ): Array<{ date: Date; timeBlock: string; quartile: number; plannedTaskId?: string; status: 'not_started'; reflection?: string }> {
     const entries = [];
     
     // Log the structure for debugging
     console.log('AI Schedule structure:', JSON.stringify(aiSchedule, null, 2).substring(0, 500));
     
-    // Handle array format (local fallback or structured response)
+    // Track which time blocks have been processed to ensure all 10 are covered
+    const processedBlocks = new Set<string>();
+    
+    // Handle array format (old local fallback format - deprecated)
     if (Array.isArray(aiSchedule.schedule)) {
       for (const block of aiSchedule.schedule) {
+        processedBlocks.add(block.timeBlock);
         // Handle the quartiles array format from local scheduler
         if (block.quartiles && Array.isArray(block.quartiles)) {
           block.quartiles.forEach((q: any, index: number) => {
@@ -395,16 +397,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
     } 
-    // Handle flat object format (current OpenAI response)
-    else if (aiSchedule.source === 'openai' || aiSchedule.schedule) {
+    // Handle flat object format (current OpenAI response and new local fallback)
+    else {
+      // Filter out metadata keys like 'source', 'totalTasks'
       const scheduleData = aiSchedule.schedule || aiSchedule;
       
-      // OpenAI returns nested structure: timeBlock -> timeRange -> quartiles
-      for (const [timeBlockName, timeBlockData] of Object.entries(scheduleData)) {
-        if (timeBlockName === 'source' || !timeBlockData || typeof timeBlockData !== 'object') continue;
+      // Process time block structure: timeBlock -> quartiles or timeBlock -> timeRange -> quartiles
+      for (const [keyName, keyData] of Object.entries(scheduleData)) {
+        if (keyName === 'source' || keyName === 'totalTasks' || !keyData || typeof keyData !== 'object') continue;
+        
+        let canonicalTimeBlockName: string;
+        let timeBlockData: any;
+        
+        // Check if this is a time-range key like "17:00-19:00"
+        const timeRangeMatch = keyName.match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
+        if (timeRangeMatch) {
+          // Map the start time to canonical time block
+          canonicalTimeBlockName = mapStartTimeToCanonicalBlock(timeRangeMatch[1]);
+          timeBlockData = keyData;
+          console.log(`Mapped time range ${keyName} to canonical block: ${canonicalTimeBlockName}`);
+        } else {
+          // Assume it's already a canonical time block name
+          canonicalTimeBlockName = keyName;
+          timeBlockData = keyData;
+        }
+        
+        // Track that we're processing this canonical time block
+        processedBlocks.add(canonicalTimeBlockName);
         
         // Extract the base time block name (remove time range in parentheses)
-        const baseTimeBlockName = timeBlockName.replace(/\s*\([^)]*\)/g, '').trim();
+        const baseTimeBlockName = canonicalTimeBlockName.replace(/\s*\([^)]*\)/g, '').trim();
         
         // Check if this has a nested time range structure
         const firstKey = Object.keys(timeBlockData)[0];
@@ -526,39 +548,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
     }
-    // Handle other flat object formats
-    else {
-      for (const [timeRange, val] of Object.entries(aiSchedule)) {
-        if (timeRange === 'source') continue; // Skip metadata
-        
-        // Parse start time from range like "17:00-19:00"
-        const startMatch = timeRange.match(/^(\d{2}:\d{2})/);
-        if (!startMatch) continue;
-        
-        const startTime = startMatch[1];
-        const timeBlock = mapStartTimeToCanonicalBlock(startTime);
-        const quartile = mapQuartileLabel((val as any).quartile);
-        
-        // Handle different task formats in flat object response
-        let taskId: string | undefined;
-        const valAny = val as any;
-        if (valAny.task && valAny.task.id) {
-          // New format: complete task objects with ID
-          taskId = valAny.task.id;
-        } else if (valAny.assignedTask) {
-          // Old format: task names requiring lookup
-          taskId = resolveTaskIdByName(valAny.assignedTask, nameToId);
-        }
-        
-        // Create entry even if no task ID (for recurring tasks)
-        entries.push({
-          date,
-          timeBlock,
-          quartile,
-          plannedTaskId: taskId || null,
-          status: 'not_started' as const
-        });
+    
+    // DEFINITIVE 40-QUARTILE GUARANTEE: Final reconciliation pass
+    
+    // Step 1: Dedupe entries (keep first occurrence of each block+quartile combination)
+    const seenBlockQuartiles = new Set<string>();
+    const dedupedEntries = [];
+    
+    for (const entry of entries) {
+      const key = `${entry.timeBlock}:${entry.quartile}`;
+      if (!seenBlockQuartiles.has(key)) {
+        seenBlockQuartiles.add(key);
+        dedupedEntries.push(entry);
       }
+    }
+    
+    // Step 2: Build comprehensive coverage map 
+    const finalEntries = [...dedupedEntries];
+    const blockQuartileMap = new Map<string, Set<number>>();
+    
+    // Track existing quartiles per block
+    finalEntries.forEach(entry => {
+      if (!blockQuartileMap.has(entry.timeBlock)) {
+        blockQuartileMap.set(entry.timeBlock, new Set());
+      }
+      blockQuartileMap.get(entry.timeBlock)!.add(entry.quartile);
+    });
+    
+    // Step 3: Ensure ALL 10 TIME_BLOCKS have ALL 4 quartiles (guaranteed 40 entries)
+    for (const timeBlock of TIME_BLOCKS) {
+      const existingQuartiles = blockQuartileMap.get(timeBlock.name) || new Set();
+      
+      // Fill missing quartiles for this time block
+      for (let quartile = 1; quartile <= 4; quartile++) {
+        if (!existingQuartiles.has(quartile)) {
+          // Generate meaningful placeholder based on time block
+          let placeholderName = "Planning & Review";
+          if (timeBlock.name === "PHYSICAL MENTAL") placeholderName = "Mindfulness Break";
+          else if (timeBlock.name === "WIND DOWN") placeholderName = "Relaxation";
+          else if (timeBlock.name === "Recover") placeholderName = "Recovery Time";
+          else if (timeBlock.name === "ENVIRONMENTAL") placeholderName = "Environmental Check";
+          else if (timeBlock.name === "HOUR OF POWER") placeholderName = "Power Focus";
+          else if (timeBlock.name === "CHIEF PROJECT") placeholderName = "Strategic Planning";
+          else if (timeBlock.name === "PRODUCTION WORK") placeholderName = "Focus Work";
+          else if (timeBlock.name === "COMPANY BLOCK") placeholderName = "Team Coordination";
+          else if (timeBlock.name === "BUSINESS AUTOMATION") placeholderName = "Process Improvement";
+          
+          finalEntries.push({
+            date,
+            timeBlock: timeBlock.name,
+            quartile,
+            plannedTaskId: null,
+            status: 'not_started' as const,
+            reflection: `PLACEHOLDER:${placeholderName}`
+          });
+        }
+      }
+    }
+    
+    // Override original entries with guaranteed complete set
+    entries.length = 0;
+    entries.push(...finalEntries);
+    
+    // Final validation: ensure exactly 40 entries (10 blocks × 4 quartiles)
+    if (entries.length !== 40) {
+      console.warn(`Schedule normalization produced ${entries.length} entries instead of expected 40!`);
+      // Group by time block for debugging
+      const blockCounts = new Map<string, number>();
+      entries.forEach(entry => {
+        blockCounts.set(entry.timeBlock, (blockCounts.get(entry.timeBlock) || 0) + 1);
+      });
+      console.warn('Entries per time block:', Array.from(blockCounts.entries()));
+    } else {
+      console.log(`Successfully normalized schedule to exactly ${entries.length} entries (complete 40-quartile coverage)`);
     }
     
     return entries;
