@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target } from "lucide-react";
+import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target, Info } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const TIME_BLOCKS = [
   { name: "Recover", time: "12am-7am", quartiles: 4 },
@@ -51,6 +52,8 @@ export default function DailyWorksheet() {
       return false;
     }
   });
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: schedule = [], isLoading: scheduleLoading } = useQuery<DailyScheduleEntry[]>({
