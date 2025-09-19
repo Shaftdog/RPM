@@ -61,6 +61,11 @@ export default function DailyWorksheet() {
     queryKey: ['/api/tasks'],
   });
 
+  // Fetch recurring tasks for display
+  const { data: recurringTasks = [] } = useQuery<any[]>({
+    queryKey: ['/api/recurring-tasks'],
+  });
+
   // Get completed tasks for the selected date to calculate calories
   const completedTasks = tasks.filter(task => 
     task.status === 'completed' && 
