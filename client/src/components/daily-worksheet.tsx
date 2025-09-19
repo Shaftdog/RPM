@@ -245,9 +245,10 @@ export default function DailyWorksheet() {
       if (task) return task.name;
     }
     
-    // If no regular task, look for recurring task
-    const recurringTask = getRecurringTaskForEntry(entry);
-    if (recurringTask) return recurringTask.taskName;
+    // Check for recurring task name stored in reflection field
+    if (entry.reflection && entry.reflection.startsWith('RECURRING_TASK:')) {
+      return entry.reflection.replace('RECURRING_TASK:', '');
+    }
     
     return "";
   };
@@ -423,8 +424,8 @@ export default function DailyWorksheet() {
                         <div className={`text-xs mb-2 ${entry?.status === 'in_progress' ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
                           {timeRange} {entry?.status === 'in_progress' && '• ACTIVE'}
                         </div>
-                        {/* Display recurring task name if no regular task is assigned */}
-                        {!entry?.actualTaskId && !entry?.plannedTaskId && getRecurringTaskForEntry(entry) ? (
+                        {/* Display recurring task name if stored in reflection field */}
+                        {!entry?.actualTaskId && !entry?.plannedTaskId && entry?.reflection?.startsWith('RECURRING_TASK:') ? (
                           <div className="w-full text-xs mb-2 p-2 bg-secondary rounded flex items-center gap-1">
                             <span className="text-muted-foreground">⟲</span>
                             <span>{getTaskNameForEntry(entry)}</span>

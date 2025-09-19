@@ -453,13 +453,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               
               // Create entry even if no task ID (for recurring tasks)
-              entries.push({
+              const entry: any = {
                 date,
                 timeBlock: baseTimeBlockName,
                 quartile: quartileNum,
                 plannedTaskId: taskId || null,
                 status: 'not_started' as const
-              });
+              };
+              
+              // If no task ID found, store the recurring task name in reflection field
+              if (!taskId && taskData && typeof taskData === 'object' && (taskData.taskName || taskData.name)) {
+                entry.reflection = `RECURRING_TASK:${taskData.taskName || taskData.name}`;
+              }
+              
+              entries.push(entry);
             }
           }
         } else {
@@ -501,13 +508,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             
             // Create entry even if no task ID (for recurring tasks)
-            entries.push({
+            const entry: any = {
               date,
               timeBlock: baseTimeBlockName,
               quartile: quartileNum,
               plannedTaskId: taskId || null,
               status: 'not_started' as const
-            });
+            };
+            
+            // If no task ID found, store the recurring task name in reflection field
+            if (!taskId && taskData && typeof taskData === 'object' && (taskData.taskName || taskData.name)) {
+              entry.reflection = `RECURRING_TASK:${taskData.taskName || taskData.name}`;
+            }
+            
+            entries.push(entry);
           }
         }
       }
