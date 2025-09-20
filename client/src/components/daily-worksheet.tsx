@@ -576,13 +576,45 @@ export default function DailyWorksheet() {
                             // Empty quarter - show compact task selector
                             <Select 
                               value={entry?.actualTaskId || entry?.plannedTaskId || ""} 
-                              onValueChange={(taskId) => {
-                                if (entry?.id) {
-                                  updateScheduleMutation.mutate({
-                                    id: entry.id,
-                                    actualTaskId: taskId,
-                                    status: 'not_started', // Reset status when selecting new task
-                                  });
+                              onValueChange={async (taskId) => {
+                                console.log('Combobox selection:', { entryId: entry?.id, taskId, blockName: block.name, quartile });
+                                if (taskId) {
+                                  if (entry?.id) {
+                                    // Update existing entry
+                                    console.log('Updating existing entry:', { id: entry.id, actualTaskId: taskId });
+                                    updateScheduleMutation.mutate({
+                                      id: entry.id,
+                                      actualTaskId: taskId,
+                                      status: 'not_started',
+                                    });
+                                  } else {
+                                    // Create new entry first, then update it
+                                    console.log('Creating new schedule entry for:', { blockName: block.name, quartile, taskId });
+                                    try {
+                                      const response = await apiRequest("POST", "/api/daily", {
+                                        timeBlock: block.name,
+                                        quartile: quartile,
+                                        plannedTaskId: taskId,
+                                        actualTaskId: taskId,
+                                        status: 'not_started',
+                                        date: new Date(selectedDate + 'T00:00:00.000Z')
+                                      });
+                                      if (response.ok) {
+                                        console.log('Successfully created new schedule entry');
+                                        // Invalidate cache to refresh the schedule data
+                                        queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
+                                      }
+                                    } catch (error) {
+                                      console.error('Failed to create schedule entry:', error);
+                                      toast({
+                                        title: "Failed to assign task",
+                                        description: "Could not create schedule entry",
+                                        variant: "destructive",
+                                      });
+                                    }
+                                  }
+                                } else {
+                                  console.log('No taskId provided');
                                 }
                               }}
                             >

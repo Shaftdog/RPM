@@ -726,6 +726,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create individual daily schedule entry
+  app.post('/api/daily', isAuthenticated, async (req: any, res) => {
+    try {
+      const scheduleData = insertDailyScheduleSchema.parse({
+        ...req.body,
+        userId: req.user.id,
+        date: new Date(req.body.xDate || req.body.date)
+      });
+      const entry = await storage.createDailyScheduleEntry({
+        ...scheduleData,
+        userId: req.user.id
+      });
+      res.json(entry);
+      
+      // Broadcast to WebSocket clients
+      broadcastToUser(req.user.id, { type: 'schedule_created', data: entry });
+    } catch (error) {
+      console.error("Error creating daily schedule entry:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to create schedule entry";
+      res.status(400).json({ message: errorMessage });
+    }
+  });
+
   app.put('/api/daily/update', isAuthenticated, async (req: any, res) => {
     try {
       const { id, ...updates } = req.body;
