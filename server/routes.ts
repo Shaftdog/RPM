@@ -1080,28 +1080,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             let taskId: string;
             if (existingTask) {
+              console.log(`[SYNC DEBUG] Found existing task for ${recurringTask.taskName} on ${dateStr}: ${existingTask.id}`);
               taskId = existingTask.id;
             } else if (!dryRun) {
-              // Create new Task entry
-              const newTask = await storage.createTask({
-                userId: req.user.id,
-                name: recurringTask.taskName,
-                type: recurringTask.taskType,
-                category: recurringTask.category,
-                subcategory: recurringTask.subcategory,
-                priority: recurringTask.priority,
-                estimatedTime: recurringTask.durationMinutes / 60,
-                status: 'not_started',
-                xDate: targetDate.toISOString(),
-                description: `Recurring: ${recurringTask.id} - ${recurringTask.description || ''}`.trim(),
-                timeHorizon: 'Week'
-              });
-              taskId = newTask.id;
-              createdTasks++;
+              console.log(`[SYNC DEBUG] Creating new task for ${recurringTask.taskName} on ${dateStr}`);
+              try {
+                // Create new Task entry
+                const newTask = await storage.createTask({
+                  userId: req.user.id,
+                  name: recurringTask.taskName,
+                  type: recurringTask.taskType,
+                  category: recurringTask.category,
+                  subcategory: recurringTask.subcategory,
+                  priority: recurringTask.priority,
+                  estimatedTime: recurringTask.durationMinutes / 60,
+                  status: 'not_started',
+                  xDate: targetDate,
+                  description: `Recurring: ${recurringTask.id} - ${recurringTask.description || ''}`.trim(),
+                  timeHorizon: 'Week'
+                });
+                taskId = newTask.id;
+                createdTasks++;
+                console.log(`[SYNC DEBUG] Created task: ${taskId} (total created: ${createdTasks})`);
+              } catch (taskError) {
+                console.error(`[SYNC ERROR] Failed to create task for ${recurringTask.taskName}:`, taskError);
+                conflicts.push({
+                  recurringTaskId: recurringTask.id,
+                  taskName: recurringTask.taskName,
+                  date: dateStr,
+                  timeBlock: timeBlock.name,
+                  requestedQuartile: recurringTask.quarter || 1,
+                  reason: `Task creation failed: ${taskError instanceof Error ? taskError.message : 'Unknown error'}`
+                });
+                skipped++;
+                continue;
+              }
             } else {
               // Dry run - create placeholder ID
               taskId = 'dry-run-task-id';
               createdTasks++;
+              console.log(`[SYNC DEBUG] Dry run - would create task for ${recurringTask.taskName} (total: ${createdTasks})`);
             }
 
             // Find available quarter in the time block
@@ -1117,6 +1135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const quarterOccupied = blockSchedules.some(s => s.quartile === testQuarter && s.plannedTaskId);
               
               if (!quarterOccupied) {
+                console.log(`[SYNC DEBUG] Found available quarter ${testQuarter} in ${timeBlock.name} for ${recurringTask.taskName}`);
                 // Found available quarter
                 if (!dryRun) {
                   await storage.createDailyScheduleEntry({
@@ -1130,10 +1149,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     energy: null,
                     reflection: null
                   });
+                  console.log(`[SYNC DEBUG] Created daily schedule entry for ${recurringTask.taskName} in ${timeBlock.name} Q${testQuarter}`);
                 }
                 createdSchedules++;
+                console.log(`[SYNC DEBUG] Created schedule entry (total: ${createdSchedules})`);
                 quarterFound = true;
                 break;
+              } else {
+                console.log(`[SYNC DEBUG] Quarter ${testQuarter} in ${timeBlock.name} is occupied`);
               }
             }
 
