@@ -756,7 +756,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tasks = await storage.getTasks(req.user.id);
       const context = { tasks };
       
-      const aiResponse = await processAICommand(message, context);
+      const aiResponse = await processAICommand(message.trim(), context);
       res.json(aiResponse);
     } catch (error) {
       console.error("Error processing AI chat:", error);
@@ -869,7 +869,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recurringTasks: context?.recurringTasks || []
       };
       
-      const aiResponse = await processRecurringTaskChatCommand(message.trim(), chatContext);
+      const aiResponse = await processRecurringTaskChatCommand(message, chatContext);
       res.json(aiResponse);
     } catch (error) {
       console.error("Error processing recurring task chat:", error);

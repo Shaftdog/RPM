@@ -377,25 +377,49 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
             {
               type: "text",
               text: `
-              Analyze this image and extract any actionable tasks, to-do items, or project requirements you can identify.
+              Analyze this image carefully and extract any actionable tasks, recurring activities, habits, or routines you can identify. 
               
-              Return the tasks in the same JSON format as text extraction:
+              Look for:
+              - Task lists or to-do items
+              - Habit tracking tables or spreadsheets  
+              - Schedule or routine lists
+              - Project plans or timelines
+              - Meeting notes with action items
+              - Any text that represents recurring activities or regular tasks
+              
+              Pay special attention to:
+              - Table structures with task names and categories
+              - Items marked with categories like "PHYSICAL", "MENTAL", "BUSINESS", etc.
+              - Activities with time blocks, durations, or frequencies
+              - Regular routines like exercise, meals, work sessions, etc.
+              - Any structured list of activities or habits
+              
+              For each task found, extract:
+              - The main activity or task name (be descriptive)
+              - Whether it's a recurring activity, habit, or routine
+              - Any category information (Physical, Mental, Business, etc.)
+              - Time estimates if visible
+              - Priority indicators if present
+              
+              Return the tasks in this JSON format:
               {
                 "tasks": [
                   {
-                    "name": "Task name",
+                    "name": "Clear, descriptive task name",
                     "type": "Task|Subtask|Milestone|Sub-Milestone",
                     "category": "Personal|Business",
-                    "subcategory": "Physical|Mental|...|Marketing|Sales|...",
+                    "subcategory": "Physical|Mental|Relationship|Environmental|Financial|Adventure|Marketing|Sales|Operations|Products|Production",
                     "timeHorizon": "Today|Week|Quarter|1 Year|5 Year|10 Year",
                     "priority": "High|Medium|Low",
                     "estimatedTime": hours_as_number,
-                    "why": "rationale",
-                    "description": "optional details",
+                    "why": "rationale or purpose",
+                    "description": "what this task involves",
                     "dependencies": []
                   }
                 ]
               }
+              
+              Be generous in extracting tasks - if you see what looks like a regular activity or routine, include it!
               `
             },
             {
