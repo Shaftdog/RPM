@@ -297,6 +297,16 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
     if (val === null || val === undefined || val === '') return null;
     const num = typeof val === 'string' ? parseFloat(val) : val;
     return isNaN(num) ? null : num;
+  }),
+  estimatedTime: z.union([z.number(), z.string().optional(), z.null()]).optional().transform((val) => {
+    if (val === null || val === undefined || val === '') return null;
+    const num = typeof val === 'string' ? parseFloat(val) : val;
+    return isNaN(num) ? null : num;
+  }),
+  actualTime: z.union([z.number(), z.string().optional(), z.null()]).optional().transform((val) => {
+    if (val === null || val === undefined || val === '') return null;
+    const num = typeof val === 'string' ? parseFloat(val) : val;
+    return isNaN(num) ? null : num;
   })
 });
 

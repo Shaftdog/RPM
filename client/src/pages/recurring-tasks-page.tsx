@@ -33,7 +33,8 @@ import {
   Trash2,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  RefreshCw
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -242,6 +243,44 @@ export default function RecurringTasksPage() {
       toast({
         title: "Error creating task",
         description: error.message || "Failed to create task",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Sync to Daily mutation
+  const syncToDailyMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/recurring/sync-to-daily", {
+        baselineDate: new Date().toISOString().slice(0, 10),
+        mode: 'next-occurrence'
+      });
+      return response.json();
+    },
+    onSuccess: (result) => {
+      // Invalidate daily schedule queries to refresh the daily worksheet
+      queryClient.invalidateQueries({ queryKey: ['/api/daily'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/daily/schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+      
+      toast({
+        title: "Sync Complete!",
+        description: `Successfully synced ${result.createdTasks} tasks and ${result.createdSchedules} schedule entries to daily schedules.`,
+      });
+      
+      // Show conflicts if any
+      if (result.conflicts && result.conflicts.length > 0) {
+        toast({
+          title: "Some conflicts occurred",
+          description: `${result.skipped} tasks were skipped due to conflicts. Check the Daily worksheet for details.`,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Sync Failed",
+        description: error.message || "Failed to sync recurring tasks to daily schedules",
         variant: "destructive",
       });
     },
@@ -2212,34 +2251,54 @@ export default function RecurringTasksPage() {
                 Weekly Matrix
               </CardTitle>
               
-              {/* Sort Controls */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Sort by:</span>
-                <Select value={sortField} onValueChange={(value: "quarter" | "priority" | "name" | "category") => setSortField(value)}>
-                  <SelectTrigger className="w-32" data-testid="select-sort-field">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="quarter">Quarter</SelectItem>
-                    <SelectItem value="priority">Priority</SelectItem>
-                    <SelectItem value="name">Name</SelectItem>
-                    <SelectItem value="category">Category</SelectItem>
-                  </SelectContent>
-                </Select>
-                
+              {/* Action Controls */}
+              <div className="flex items-center gap-4">
+                {/* Sync to Daily Button */}
                 <Button
-                  variant="outline"
+                  variant="default"
                   size="sm"
-                  onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
-                  className="px-2"
-                  data-testid="button-sort-direction"
+                  onClick={() => syncToDailyMutation.mutate()}
+                  disabled={syncToDailyMutation.isPending}
+                  className="gap-2"
+                  data-testid="button-sync-to-daily"
                 >
-                  {sortDirection === "asc" ? (
-                    <ArrowUp className="h-4 w-4" />
+                  {syncToDailyMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <ArrowDown className="h-4 w-4" />
+                    <RefreshCw className="h-4 w-4" />
                   )}
+                  {syncToDailyMutation.isPending ? "Syncing..." : "Sync to Daily"}
                 </Button>
+
+                {/* Sort Controls */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Sort by:</span>
+                  <Select value={sortField} onValueChange={(value: "quarter" | "priority" | "name" | "category") => setSortField(value)}>
+                    <SelectTrigger className="w-32" data-testid="select-sort-field">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="quarter">Quarter</SelectItem>
+                      <SelectItem value="priority">Priority</SelectItem>
+                      <SelectItem value="name">Name</SelectItem>
+                      <SelectItem value="category">Category</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+                    className="px-2"
+                    data-testid="button-sort-direction"
+                  >
+                    {sortDirection === "asc" ? (
+                      <ArrowUp className="h-4 w-4" />
+                    ) : (
+                      <ArrowDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           </CardHeader>

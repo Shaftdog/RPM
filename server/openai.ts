@@ -83,13 +83,17 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
   const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   const currentDayFull = dayNames[dayOfWeek];
   
-  // Filter recurring tasks for today
+  // Filter recurring tasks for today (may be empty if called from AI Schedule Generator)
   const todaysRecurringTasks = recurringTasks.filter(rt => 
     rt.daysOfWeek && rt.daysOfWeek.includes(currentDayFull)
   );
   
-  console.log(`Local scheduler: Processing ${todaysRecurringTasks.length} recurring tasks for ${currentDayFull}`);
-  console.log('Recurring tasks:', todaysRecurringTasks.map(t => ({ name: t.taskName, block: t.timeBlock, quarter: t.quarter })));
+  console.log(`Local scheduler: Processing ${todaysRecurringTasks.length} recurring tasks and ${tasks.length} regular tasks for ${currentDayFull}`);
+  if (todaysRecurringTasks.length > 0) {
+    console.log('Recurring tasks:', todaysRecurringTasks.map(t => ({ name: t.taskName, block: t.timeBlock, quarter: t.quarter })));
+  } else {
+    console.log('No recurring tasks (handled separately by Sync to Daily)');
+  }
   
   // Distribute tasks by priority across time blocks
   const availableTasks = [...tasks];
@@ -109,7 +113,7 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
     const blockDuration = blockEndMinutes - blockStartMinutes;
     const quarterDuration = blockDuration / 4;
     
-    // First, place recurring tasks in their preferred quarters
+    // First, place recurring tasks in their preferred quarters (if any)
     todaysRecurringTasks.forEach(recurringTask => {
       // More flexible time block matching
       const blockNameUpper = block.name.toUpperCase();
@@ -229,7 +233,7 @@ export async function generateDailySchedule(
   }
 
   // Temporarily disable OpenAI to avoid timeout issues until we fix the API response
-  console.log("Using local scheduler to avoid OpenAI timeout issues");
+  console.log("Using local scheduler for regular tasks only (recurring tasks handled by Sync to Daily)");
   return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
 
   /*

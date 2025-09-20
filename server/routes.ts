@@ -672,15 +672,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       console.timeEnd('fetch_tasks');
       
-      console.time('fetch_recurring');
-      const recurringTasks = await storage.getRecurringTasks(userId);
-      console.timeEnd('fetch_recurring');
-      
-      // Debug what properties are actually being returned
-      console.log('DEBUG: First recurring task properties:', 
-        recurringTasks.length > 0 ? Object.keys(recurringTasks[0]) : 'No recurring tasks');
-      console.log('DEBUG: Sample recurring task data:', 
-        recurringTasks.length > 0 ? recurringTasks[0] : 'None');
+      // Note: Recurring tasks are now handled by "Sync to Daily" functionality
+      // AI Schedule generation now focuses only on regular tasks for better optimization
+      console.log('DEBUG: Skipping recurring tasks - using regular tasks only for AI optimization');
       
       // Get user preferences (you might want to store these in user profile)
       const userPreferences = {
@@ -695,7 +689,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       console.time('generate_schedule');
-      const aiSchedule = await generateDailySchedule(tasksForScheduling, recurringTasks, userPreferences);
+      // Pass empty array for recurring tasks since they're handled by "Sync to Daily"
+      const aiSchedule = await generateDailySchedule(tasksForScheduling, [], userPreferences);
       console.timeEnd('generate_schedule');
       
       // Build task name index for name→ID lookup (only from schedulable tasks)
@@ -973,6 +968,203 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error deleting recurring schedule:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to delete recurring schedule";
       res.status(400).json({ message: errorMessage });
+    }
+  });
+
+  // Sync Recurring Tasks to Daily Schedule
+  app.post('/api/recurring/sync-to-daily', isAuthenticated, async (req: any, res) => {
+    try {
+      const syncSchema = z.object({
+        baselineDate: z.string().optional().default(new Date().toISOString().slice(0, 10)),
+        mode: z.enum(['next-occurrence', 'week']).optional().default('next-occurrence'),
+        dryRun: z.boolean().optional().default(false)
+      });
+
+      const { baselineDate, mode, dryRun } = syncSchema.parse(req.body);
+      const baseline = new Date(baselineDate);
+      
+      // Get all active recurring tasks for the user
+      const recurringTasks = await storage.getRecurringTasks(req.user.id);
+      
+      let createdTasks = 0;
+      let createdSchedules = 0;
+      let skipped = 0;
+      const conflicts: Array<{
+        recurringTaskId: string;
+        taskName: string;
+        date: string;
+        timeBlock: string;
+        requestedQuartile: number;
+        reason: string;
+      }> = [];
+
+      // Helper function to calculate next occurrence date
+      const getNextOccurrenceDate = (baseline: Date, targetDayName: string): Date => {
+        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const baselineDay = baseline.getDay(); // 0=Sunday, 1=Monday, etc.
+        const targetDay = dayNames.indexOf(targetDayName.toLowerCase());
+        
+        if (targetDay === -1) {
+          throw new Error(`Invalid day name: ${targetDayName}`);
+        }
+        
+        // Calculate days until next occurrence (always future, never same day)
+        let daysUntil = targetDay - baselineDay;
+        if (daysUntil <= 0) {
+          daysUntil += 7; // Next week
+        }
+        
+        const nextDate = new Date(baseline);
+        nextDate.setDate(baseline.getDate() + daysUntil);
+        nextDate.setHours(0, 0, 0, 0); // Start of day
+        return nextDate;
+      };
+
+      // Helper function to find valid time block
+      const findTimeBlock = (timeBlockName: string): { name: string } | null => {
+        const normalizedName = timeBlockName.toUpperCase();
+        return TIME_BLOCKS.find(block => 
+          block.name.toUpperCase() === normalizedName ||
+          block.name.toUpperCase().includes(normalizedName) ||
+          normalizedName.includes(block.name.toUpperCase())
+        ) || null;
+      };
+
+      // Process each recurring task
+      for (const recurringTask of recurringTasks) {
+        // Skip non-Task types (Milestones, Sub-Milestones)
+        if (recurringTask.taskType !== 'Task') {
+          continue;
+        }
+
+        // Find matching time block
+        const timeBlock = findTimeBlock(recurringTask.timeBlock);
+        if (!timeBlock) {
+          conflicts.push({
+            recurringTaskId: recurringTask.id,
+            taskName: recurringTask.taskName,
+            date: '',
+            timeBlock: recurringTask.timeBlock,
+            requestedQuartile: recurringTask.quarter || 1,
+            reason: `Invalid time block: ${recurringTask.timeBlock}`
+          });
+          skipped++;
+          continue;
+        }
+
+        // Process each day of the week for this task
+        for (const dayName of recurringTask.daysOfWeek) {
+          try {
+            const targetDate = getNextOccurrenceDate(baseline, dayName);
+            const dateStr = targetDate.toISOString().slice(0, 10);
+
+            // Check for existing Task with same name and date
+            const existingTasks = await storage.getTasks(req.user.id);
+            const existingTask = existingTasks.find(task => 
+              task.name === recurringTask.taskName && 
+              task.xDate && 
+              new Date(task.xDate).toISOString().slice(0, 10) === dateStr
+            );
+
+            let taskId: string;
+            if (existingTask) {
+              taskId = existingTask.id;
+            } else if (!dryRun) {
+              // Create new Task entry
+              const newTask = await storage.createTask({
+                userId: req.user.id,
+                name: recurringTask.taskName,
+                type: recurringTask.taskType,
+                category: recurringTask.category,
+                subcategory: recurringTask.subcategory,
+                priority: recurringTask.priority,
+                estimatedTime: recurringTask.durationMinutes / 60,
+                status: 'not_started',
+                xDate: targetDate.toISOString(),
+                description: `Recurring: ${recurringTask.id} - ${recurringTask.description || ''}`.trim(),
+                timeHorizon: 'Week'
+              });
+              taskId = newTask.id;
+              createdTasks++;
+            } else {
+              // Dry run - create placeholder ID
+              taskId = 'dry-run-task-id';
+              createdTasks++;
+            }
+
+            // Find available quarter in the time block
+            const existingSchedules = await storage.getDailySchedule(req.user.id, targetDate);
+            const blockSchedules = existingSchedules.filter(s => s.timeBlock === timeBlock.name);
+            
+            let targetQuarter = recurringTask.quarter || 1;
+            let quarterFound = false;
+
+            // Try quarters 1-4 starting from preferred quarter
+            for (let attempt = 0; attempt < 4; attempt++) {
+              const testQuarter = ((targetQuarter - 1 + attempt) % 4) + 1;
+              const quarterOccupied = blockSchedules.some(s => s.quartile === testQuarter && s.plannedTaskId);
+              
+              if (!quarterOccupied) {
+                // Found available quarter
+                if (!dryRun) {
+                  await storage.createDailyScheduleEntry({
+                    userId: req.user.id,
+                    date: targetDate,
+                    timeBlock: timeBlock.name,
+                    quartile: testQuarter,
+                    plannedTaskId: taskId,
+                    actualTime: null,
+                    notes: `Synced from recurring task: ${recurringTask.taskName}`,
+                    energy: null,
+                    reflection: null
+                  });
+                }
+                createdSchedules++;
+                quarterFound = true;
+                break;
+              }
+            }
+
+            if (!quarterFound) {
+              conflicts.push({
+                recurringTaskId: recurringTask.id,
+                taskName: recurringTask.taskName,
+                date: dateStr,
+                timeBlock: timeBlock.name,
+                requestedQuartile: recurringTask.quarter || 1,
+                reason: 'All quarters occupied in time block'
+              });
+              skipped++;
+            }
+
+          } catch (dateError) {
+            conflicts.push({
+              recurringTaskId: recurringTask.id,
+              taskName: recurringTask.taskName,
+              date: '',
+              timeBlock: recurringTask.timeBlock,
+              requestedQuartile: recurringTask.quarter || 1,
+              reason: `Date calculation error: ${dateError instanceof Error ? dateError.message : 'Unknown error'}`
+            });
+            skipped++;
+          }
+        }
+      }
+
+      res.json({
+        createdTasks,
+        createdSchedules,
+        skipped,
+        conflicts,
+        message: dryRun 
+          ? `Dry run complete: Would create ${createdTasks} tasks and ${createdSchedules} schedule entries`
+          : `Successfully synced ${createdTasks} tasks and ${createdSchedules} schedule entries to daily schedules`
+      });
+
+    } catch (error) {
+      console.error("Error syncing recurring tasks to daily:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to sync recurring tasks to daily";
+      res.status(500).json({ message: errorMessage });
     }
   });
 
