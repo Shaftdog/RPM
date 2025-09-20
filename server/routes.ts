@@ -985,6 +985,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get all active recurring tasks for the user
       const recurringTasks = await storage.getRecurringTasks(req.user.id);
+      console.log(`[SYNC DEBUG] Found ${recurringTasks.length} recurring tasks for user ${req.user.id}`);
       
       let createdTasks = 0;
       let createdSchedules = 0;
@@ -1032,14 +1033,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Process each recurring task
       for (const recurringTask of recurringTasks) {
+        console.log(`[SYNC DEBUG] Processing recurring task: ${recurringTask.taskName} (type: ${recurringTask.taskType})`);
         // Skip non-Task types (Milestones, Sub-Milestones)
         if (recurringTask.taskType !== 'Task') {
+          console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - not a Task type`);
           continue;
         }
 
         // Find matching time block
         const timeBlock = findTimeBlock(recurringTask.timeBlock);
         if (!timeBlock) {
+          console.log(`[SYNC DEBUG] Invalid time block for ${recurringTask.taskName}: ${recurringTask.timeBlock}`);
           conflicts.push({
             recurringTaskId: recurringTask.id,
             taskName: recurringTask.taskName,
@@ -1048,6 +1052,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             requestedQuartile: recurringTask.quarter || 1,
             reason: `Invalid time block: ${recurringTask.timeBlock}`
           });
+          skipped++;
+          continue;
+        }
+        console.log(`[SYNC DEBUG] Found time block for ${recurringTask.taskName}: ${timeBlock.name}`);
+        console.log(`[SYNC DEBUG] Days of week: ${JSON.stringify(recurringTask.daysOfWeek)}`);
+        
+        if (!recurringTask.daysOfWeek || recurringTask.daysOfWeek.length === 0) {
+          console.log(`[SYNC DEBUG] No days of week for ${recurringTask.taskName}`);
           skipped++;
           continue;
         }
