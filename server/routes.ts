@@ -765,6 +765,155 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manual add task to existing quarter (converts to MULTIPLE_TASKS format)
+  app.post('/api/daily/add-to-quarter', isAuthenticated, async (req: any, res) => {
+    try {
+      const { timeBlock, quartile, taskId, date } = req.body;
+      
+      console.log(`[ADD TO QUARTER] Adding task ${taskId} to ${timeBlock} Q${quartile} on ${date}`);
+      
+      // Validate inputs
+      if (!timeBlock || !taskId || !date) {
+        return res.status(400).json({ message: "Missing required fields: timeBlock, quartile, taskId, date" });
+      }
+      
+      // Validate quartile is a valid number between 1-4
+      const quartileNum = parseInt(String(quartile), 10);
+      if (isNaN(quartileNum) || quartileNum < 1 || quartileNum > 4) {
+        return res.status(400).json({ message: "Quartile must be a number between 1 and 4" });
+      }
+
+      // Get the task being added
+      const task = await storage.getTask(taskId, req.user.id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const targetDate = new Date(date);
+      
+      // Find existing schedule entry for this quarter
+      const existingSchedules = await storage.getDailySchedule(req.user.id, targetDate);
+      const existingEntry = existingSchedules.find(s => s.timeBlock === timeBlock && s.quartile === quartileNum);
+      
+      if (!existingEntry) {
+        // No existing entry - create new one with this task
+        console.log(`[ADD TO QUARTER] Creating new entry for ${timeBlock} Q${quartileNum}`);
+        const newEntry = await storage.createDailyScheduleEntry({
+          userId: req.user.id,
+          date: targetDate,
+          timeBlock,
+          quartile: quartileNum,
+          plannedTaskId: taskId,
+          status: 'not_started',
+          reflection: null
+        });
+        
+        res.json(newEntry);
+        broadcastToUser(req.user.id, { type: 'schedule_created', data: newEntry });
+        return;
+      }
+
+      // Existing entry found - check if it's a placeholder first
+      if (existingEntry.reflection?.startsWith('PLACEHOLDER:')) {
+        console.log(`[ADD TO QUARTER] Existing entry is a placeholder, replacing with new task`);
+        const updatedEntry = await storage.updateDailyScheduleEntry(existingEntry.id, req.user.id, {
+          plannedTaskId: taskId,
+          reflection: null
+        });
+        
+        res.json(updatedEntry);
+        broadcastToUser(req.user.id, { type: 'schedule_updated', data: updatedEntry });
+        return;
+      }
+
+      // Existing entry found - need to combine tasks
+      console.log(`[ADD TO QUARTER] Found existing entry, combining tasks`);
+      let newReflection: string;
+      
+      if (existingEntry.reflection?.startsWith('MULTIPLE_TASKS:')) {
+        // Already has multiple tasks - add to the list (avoid duplicates)
+        const existingTasks = existingEntry.reflection.replace('MULTIPLE_TASKS:', '');
+        const taskNames = existingTasks.split('|').map(name => name.trim());
+        
+        // Only add if not already present (case-insensitive, normalized whitespace)
+        const normalizeTaskName = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
+        const normalizedTaskName = normalizeTaskName(task.name);
+        const normalizedTaskNames = taskNames.map(name => normalizeTaskName(name));
+        
+        if (!normalizedTaskNames.includes(normalizedTaskName)) {
+          newReflection = `MULTIPLE_TASKS:${existingTasks}|${task.name}`;
+          console.log(`[ADD TO QUARTER] Adding to existing multiple tasks: ${newReflection}`);
+        } else {
+          console.log(`[ADD TO QUARTER] Task ${task.name} already exists in multiple tasks, skipping`);
+          return res.status(409).json({ message: "Task already exists in this quarter" });
+        }
+      } else if (existingEntry.reflection?.startsWith('RECURRING_TASK:')) {
+        // Has a single recurring task - convert to multiple
+        const existingTask = existingEntry.reflection.replace('RECURRING_TASK:', '');
+        // Check normalized names for better duplicate detection
+        const normalizeTaskName = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
+        if (normalizeTaskName(existingTask) !== normalizeTaskName(task.name)) {
+          newReflection = `MULTIPLE_TASKS:${existingTask}|${task.name}`;
+          console.log(`[ADD TO QUARTER] Converting single recurring to multiple: ${newReflection}`);
+        } else {
+          console.log(`[ADD TO QUARTER] Task ${task.name} already exists as recurring task, skipping`);
+          return res.status(409).json({ message: "Task already exists in this quarter" });
+        }
+      } else if (existingEntry.plannedTaskId || existingEntry.actualTaskId) {
+        // Has a regular planned/actual task - get its name and combine
+        const existingTaskId = existingEntry.actualTaskId || existingEntry.plannedTaskId;
+        if (existingTaskId) {
+          // Check if it's the same task
+          if (existingTaskId === taskId) {
+            console.log(`[ADD TO QUARTER] Task ${task.name} already exists as planned/actual task, skipping`);
+            return res.status(409).json({ message: "Task already exists in this quarter" });
+          }
+          
+          const existingTask = await storage.getTask(existingTaskId, req.user.id);
+          if (existingTask) {
+            // Check if the task names match (case-insensitive, normalized)
+            const normalizeTaskName = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
+            if (normalizeTaskName(existingTask.name) === normalizeTaskName(task.name)) {
+              console.log(`[ADD TO QUARTER] Task ${task.name} already exists as planned/actual task (same normalized name), skipping`);
+              return res.status(409).json({ message: "Task already exists in this quarter" });
+            }
+            
+            newReflection = `MULTIPLE_TASKS:${existingTask.name}|${task.name}`;
+            console.log(`[ADD TO QUARTER] Converting single regular task to multiple: ${newReflection}`);
+          } else {
+            // Existing task fetch failed - still need to check for name-based duplicates against the new task
+            // Since we can't get the existing task name, we have to be conservative and allow the addition
+            // but this is an edge case that should be rare
+            console.log(`[ADD TO QUARTER] Existing task fetch failed for ID ${existingTaskId}, proceeding with caution`);
+            newReflection = `MULTIPLE_TASKS:Unknown Task|${task.name}`;
+            console.log(`[ADD TO QUARTER] Creating multiple tasks with unknown existing task: ${newReflection}`);
+          }
+        } else {
+          newReflection = `MULTIPLE_TASKS:${task.name}`;
+          console.log(`[ADD TO QUARTER] No existing task ID, creating new multiple tasks: ${newReflection}`);
+        }
+      } else {
+        // Empty entry - just add the new task
+        newReflection = `MULTIPLE_TASKS:${task.name}`;
+        console.log(`[ADD TO QUARTER] Empty entry, creating new multiple tasks: ${newReflection}`);
+      }
+      
+      // Update the existing entry with the new reflection
+      const updatedEntry = await storage.updateDailyScheduleEntry(existingEntry.id, req.user.id, {
+        reflection: newReflection
+      });
+      
+      console.log(`[ADD TO QUARTER] Successfully updated entry with multiple tasks`);
+      res.json(updatedEntry);
+      broadcastToUser(req.user.id, { type: 'schedule_updated', data: updatedEntry });
+      
+    } catch (error) {
+      console.error("Error adding task to quarter:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to add task to quarter";
+      res.status(500).json({ message: errorMessage });
+    }
+  });
+
   // AI Integration Routes
   app.post('/api/ai/chat', isAuthenticated, async (req: any, res) => {
     try {

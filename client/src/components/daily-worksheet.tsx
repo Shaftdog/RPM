@@ -54,6 +54,10 @@ export default function DailyWorksheet() {
   });
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  
+  // Manual multi-add state
+  const [showAddTaskFor, setShowAddTaskFor] = useState<{timeBlock: string, quartile: number} | null>(null);
+  
   const { toast } = useToast();
 
   const { data: schedule = [], isLoading: scheduleLoading } = useQuery<DailyScheduleEntry[]>({
@@ -563,6 +567,16 @@ export default function DailyWorksheet() {
                     const visibleTasks = candidates.slice(0, 4); // Show max 4 tasks
                     const hiddenCount = Math.max(0, candidates.length - 4);
                     
+                    // Debug logging for MULTIPLE_TASKS (dev only)
+                    if (import.meta.env.DEV && entry?.reflection?.startsWith('MULTIPLE_TASKS:')) {
+                      console.log(`[DEBUG] ${block.name} Q${quartile} - MULTIPLE_TASKS entry:`, {
+                        reflection: entry.reflection,
+                        candidates: candidates.length,
+                        visibleTasks: visibleTasks.length,
+                        candidateDetails: candidates.map(c => ({ id: c.id, name: c.name, type: c.type, isActive: c.isActive }))
+                      });
+                    }
+                    
                     return (
                       <div key={quartile} className={`bg-card p-2 ${entry?.status === 'in_progress' ? 'border-2 border-primary' : ''}`}>
                         {/* Compact header */}
@@ -779,6 +793,100 @@ export default function DailyWorksheet() {
                                 >
                                   <span className="text-xs">📋 +{hiddenCount} more</span>
                                 </div>
+                              )}
+                              
+                              {/* Manual Add Task Button */}
+                              {showAddTaskFor?.timeBlock === block.name && showAddTaskFor?.quartile === quartile ? (
+                                // Show task selector when adding
+                                <div className="mt-2 pt-1 border-t border-border/50">
+                                  <Select 
+                                    value=""
+                                    onValueChange={async (taskId) => {
+                                      if (taskId) {
+                                        try {
+                                          // Add task to existing quarter (will convert to MULTIPLE_TASKS if needed)
+                                          const response = await apiRequest("POST", "/api/daily/add-to-quarter", {
+                                            timeBlock: block.name,
+                                            quartile: quartile,
+                                            taskId: taskId,
+                                            date: new Date(selectedDate + 'T00:00:00.000Z')
+                                          });
+                                          
+                                          if (response.ok) {
+                                            console.log('Successfully added task to quarter');
+                                            // Invalidate cache to refresh the schedule data
+                                            queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
+                                            toast({
+                                              title: "Task added successfully",
+                                              description: `Added task to ${block.name} Q${quartile}`,
+                                            });
+                                            // Hide selector on success
+                                            setShowAddTaskFor(null);
+                                          } else {
+                                            // Get the error message from the response
+                                            const errorData = await response.json().catch(() => ({}));
+                                            const errorMessage = errorData.message || "Could not add task to quarter";
+                                            toast({
+                                              title: "Failed to add task",
+                                              description: errorMessage,
+                                              variant: "destructive",
+                                            });
+                                            // Hide selector on error as well
+                                            setShowAddTaskFor(null);
+                                          }
+                                        } catch (error) {
+                                          console.error('Failed to add task to quarter:', error);
+                                          toast({
+                                            title: "Failed to add task", 
+                                            description: error instanceof Error ? error.message : "Could not add task to quarter",
+                                            variant: "destructive",
+                                          });
+                                          // Hide selector on exception
+                                          setShowAddTaskFor(null);
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-full text-xs h-6" data-testid={`select-add-task-${block.name.replace(/\s+/g, '-')}-${quartile}`}>
+                                      <SelectValue placeholder="Add another task..." />
+                                    </SelectTrigger>
+                                    <SelectContent data-testid={`select-content-add-task-${block.name.replace(/\s+/g, '-')}-${quartile}`}>
+                                      {tasks
+                                        .filter(task => task.type === 'Task' || task.type === 'Subtask')
+                                        .filter(task => {
+                                          // Don't show tasks already in this quarter
+                                          // For MULTIPLE_TASKS, check by name since candidates have generated IDs
+                                          return !visibleTasks.some(vt => vt.id === task.id || vt.name?.toLowerCase().trim() === task.name?.toLowerCase().trim());
+                                        })
+                                        .map((task) => (
+                                          <SelectItem key={task.id} value={task.id} data-testid={`select-item-add-task-${task.id}`}>
+                                            {task.name}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full mt-1 h-5 text-xs"
+                                    onClick={() => setShowAddTaskFor(null)}
+                                    data-testid={`button-cancel-add-${block.name.replace(/\s+/g, '-')}-${quartile}`}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              ) : (
+                                // Show "+" button when not adding
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="w-full mt-1 h-5 text-xs opacity-60 hover:opacity-100"
+                                  onClick={() => setShowAddTaskFor({ timeBlock: block.name, quartile: quartile })}
+                                  data-testid={`button-add-task-${block.name.replace(/\s+/g, '-')}-${quartile}`}
+                                >
+                                  <Plus className="h-3 w-3 mr-1" />
+                                  Add Task
+                                </Button>
                               )}
                             </>
                           )}
