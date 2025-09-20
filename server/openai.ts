@@ -377,49 +377,33 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
             {
               type: "text",
               text: `
-              Analyze this image carefully and extract any actionable tasks, recurring activities, habits, or routines you can identify. 
+              Look at this image and find all task names, activities, or items that could be recurring tasks.
               
-              Look for:
-              - Task lists or to-do items
-              - Habit tracking tables or spreadsheets  
-              - Schedule or routine lists
-              - Project plans or timelines
-              - Meeting notes with action items
-              - Any text that represents recurring activities or regular tasks
+              Extract every item you can see that looks like a task, activity, or routine. Look for:
+              - Task names in any table or list
+              - Activities with time durations 
+              - Any routine or habit mentioned
+              - Work sessions, meetings, exercises, etc.
               
-              Pay special attention to:
-              - Table structures with task names and categories
-              - Items marked with categories like "PHYSICAL", "MENTAL", "BUSINESS", etc.
-              - Activities with time blocks, durations, or frequencies
-              - Regular routines like exercise, meals, work sessions, etc.
-              - Any structured list of activities or habits
-              
-              For each task found, extract:
-              - The main activity or task name (be descriptive)
-              - Whether it's a recurring activity, habit, or routine
-              - Any category information (Physical, Mental, Business, etc.)
-              - Time estimates if visible
-              - Priority indicators if present
-              
-              Return the tasks in this JSON format:
+              For each task you find, return it in this simple JSON format:
               {
                 "tasks": [
                   {
-                    "name": "Clear, descriptive task name",
-                    "type": "Task|Subtask|Milestone|Sub-Milestone",
-                    "category": "Personal|Business",
-                    "subcategory": "Physical|Mental|Relationship|Environmental|Financial|Adventure|Marketing|Sales|Operations|Products|Production",
-                    "timeHorizon": "Today|Week|Quarter|1 Year|5 Year|10 Year",
-                    "priority": "High|Medium|Low",
-                    "estimatedTime": hours_as_number,
-                    "why": "rationale or purpose",
-                    "description": "what this task involves",
+                    "name": "exact task name from image",
+                    "type": "Task",
+                    "category": "Personal",
+                    "subcategory": "Physical",
+                    "timeHorizon": "Week",
+                    "priority": "Medium",
+                    "estimatedTime": 0.5,
+                    "why": "regular activity",
+                    "description": "recurring task",
                     "dependencies": []
                   }
                 ]
               }
               
-              Be generous in extracting tasks - if you see what looks like a regular activity or routine, include it!
+              Important: Extract every single task/activity you can see in the image, even if you're not 100% sure it's a task.
               `
             },
             {
@@ -435,7 +419,10 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
       max_completion_tokens: 1000,
     });
 
-    const result = JSON.parse(response.choices[0].message.content || "{}");
+    const rawContent = response.choices[0].message.content || "{}";
+    console.log('Raw AI image analysis response:', rawContent);
+    const result = JSON.parse(rawContent);
+    console.log('Parsed AI result:', JSON.stringify(result, null, 2));
     
     // Fix subcategories that don't match our enum values
     const validPersonalSubcategories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure'];
