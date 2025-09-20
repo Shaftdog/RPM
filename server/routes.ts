@@ -468,7 +468,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   } else if (t && typeof t === 'object') {
                     taskName = t.taskName || t.name;
                     if (index === 0) {
-                      taskId = t.id || resolveTaskIdByName(taskName, nameToId);
+                      taskId = t.id || (taskName ? resolveTaskIdByName(taskName, nameToId) : undefined);
                     }
                   }
                   if (taskName) taskNames.push(taskName);
@@ -536,7 +536,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 } else if (t && typeof t === 'object') {
                   taskName = t.taskName || t.name;
                   if (index === 0) {
-                    taskId = t.id || resolveTaskIdByName(taskName, nameToId);
+                    taskId = t.id || (taskName ? resolveTaskIdByName(taskName, nameToId) : undefined);
                   }
                 }
                 if (taskName) taskNames.push(taskName);
