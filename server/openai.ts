@@ -88,6 +88,9 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
     rt.daysOfWeek && rt.daysOfWeek.includes(currentDayFull)
   );
   
+  console.log(`Local scheduler: Processing ${todaysRecurringTasks.length} recurring tasks for ${currentDayFull}`);
+  console.log('Recurring tasks:', todaysRecurringTasks.map(t => ({ name: t.taskName, block: t.timeBlock, quarter: t.quarter })));
+  
   // Distribute tasks by priority across time blocks
   const availableTasks = [...tasks];
   
@@ -108,11 +111,28 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
     
     // First, place recurring tasks in their preferred quarters
     todaysRecurringTasks.forEach(recurringTask => {
-      const blockMatches = recurringTask.timeBlock === block.name || 
-                          recurringTask.timeBlock.startsWith(block.name + " (");
-      if (blockMatches && recurringTask.quarter) {
-        const quarterKey = `Q${recurringTask.quarter}`;
+      // More flexible time block matching
+      const blockNameUpper = block.name.toUpperCase();
+      const taskTimeBlockUpper = (recurringTask.timeBlock || '').toUpperCase();
+      
+      // Check if the recurring task's timeBlock contains or matches the block name
+      const blockMatches = taskTimeBlockUpper.includes(blockNameUpper) ||
+                          blockNameUpper.includes("PHYSICAL MENTAL") && taskTimeBlockUpper.includes("PHYSICAL MENTAL") ||
+                          blockNameUpper.includes("CHIEF PROJECT") && taskTimeBlockUpper.includes("CHIEF PROJECT") ||
+                          blockNameUpper.includes("HOUR OF POWER") && taskTimeBlockUpper.includes("HOUR OF POWER") ||
+                          blockNameUpper.includes("PRODUCTION WORK") && taskTimeBlockUpper.includes("PRODUCTION WORK") ||
+                          blockNameUpper.includes("COMPANY BLOCK") && taskTimeBlockUpper.includes("COMPANY BLOCK") ||
+                          blockNameUpper.includes("BUSINESS AUTOMATION") && taskTimeBlockUpper.includes("BUSINESS AUTOMATION") ||
+                          blockNameUpper.includes("ENVIRONMENTAL") && taskTimeBlockUpper.includes("ENVIRONMENTAL") ||
+                          blockNameUpper.includes("FLEXIBLE BLOCK") && taskTimeBlockUpper.includes("FLEXIBLE BLOCK") ||
+                          blockNameUpper.includes("WIND DOWN") && taskTimeBlockUpper.includes("WIND DOWN") ||
+                          blockNameUpper.includes("RECOVER") && taskTimeBlockUpper.includes("RECOVER");
+      
+      if (blockMatches) {
+        const quarterNum = recurringTask.quarter || 1; // Default to Q1 if no quarter specified
+        const quarterKey = `Q${quarterNum}`;
         if (quarterKey in schedule[block.name]) {
+          console.log(`Placing ${recurringTask.taskName} in ${block.name} ${quarterKey}`);
           schedule[block.name][quarterKey].push({
             taskName: recurringTask.taskName,
             durationMinutes: recurringTask.durationMinutes || quarterDuration
