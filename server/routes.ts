@@ -1378,25 +1378,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   if (!dryRun) {
                     let newReflection: string;
                     
+                    // Helper function for normalized task name comparison
+                    const normalizeTaskName = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
+                    
                     if (existingEntry.reflection?.startsWith('MULTIPLE_TASKS:')) {
-                      // Add to existing multiple tasks
+                      // Add to existing multiple tasks (with duplicate detection)
                       const existingTasks = existingEntry.reflection.replace('MULTIPLE_TASKS:', '');
-                      newReflection = `MULTIPLE_TASKS:${existingTasks}|${recurringTask.taskName}`;
+                      const taskNames = existingTasks.split('|').map(name => name.trim());
+                      
+                      // Check for duplicates using normalized names
+                      const normalizedNewTask = normalizeTaskName(recurringTask.taskName);
+                      const normalizedExistingNames = taskNames.map(name => normalizeTaskName(name));
+                      
+                      if (!normalizedExistingNames.includes(normalizedNewTask)) {
+                        newReflection = `MULTIPLE_TASKS:${existingTasks}|${recurringTask.taskName}`;
+                        console.log(`[SYNC DEBUG] Adding ${recurringTask.taskName} to existing multiple tasks`);
+                      } else {
+                        console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - already exists in multiple tasks`);
+                        quarterFound = true;
+                        break; // Skip this quarter, task already exists
+                      }
                     } else if (existingEntry.reflection?.startsWith('RECURRING_TASK:')) {
-                      // Convert single recurring task to multiple
+                      // Convert single recurring task to multiple (with duplicate detection)
                       const existingTask = existingEntry.reflection.replace('RECURRING_TASK:', '');
-                      newReflection = `MULTIPLE_TASKS:${existingTask}|${recurringTask.taskName}`;
+                      if (normalizeTaskName(existingTask) !== normalizeTaskName(recurringTask.taskName)) {
+                        newReflection = `MULTIPLE_TASKS:${existingTask}|${recurringTask.taskName}`;
+                        console.log(`[SYNC DEBUG] Converting single recurring to multiple: ${existingTask} + ${recurringTask.taskName}`);
+                      } else {
+                        console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - same as existing recurring task`);
+                        quarterFound = true;
+                        break; // Skip this quarter, task already exists
+                      }
                     } else if (existingEntry.plannedTaskId) {
-                      // Has a regular planned task - add recurring task
+                      // Has a regular planned task - add recurring task (with duplicate detection)
                       const plannedTask = existingTasks.find(t => t.id === existingEntry.plannedTaskId);
                       if (plannedTask) {
-                        newReflection = `MULTIPLE_TASKS:${plannedTask.name}|${recurringTask.taskName}`;
+                        if (normalizeTaskName(plannedTask.name) !== normalizeTaskName(recurringTask.taskName)) {
+                          newReflection = `MULTIPLE_TASKS:${plannedTask.name}|${recurringTask.taskName}`;
+                          console.log(`[SYNC DEBUG] Adding recurring task to planned task: ${plannedTask.name} + ${recurringTask.taskName}`);
+                        } else {
+                          console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - same as existing planned task`);
+                          quarterFound = true;
+                          break; // Skip this quarter, task already exists
+                        }
                       } else {
                         newReflection = `MULTIPLE_TASKS:${recurringTask.taskName}`;
+                        console.log(`[SYNC DEBUG] Planned task not found, creating single multiple task`);
                       }
                     } else {
                       // Fallback
                       newReflection = `MULTIPLE_TASKS:${recurringTask.taskName}`;
+                      console.log(`[SYNC DEBUG] Creating new multiple task entry`);
                     }
                     
                     // Update existing schedule entry to include multiple tasks
