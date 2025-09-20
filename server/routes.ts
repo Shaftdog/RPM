@@ -1120,7 +1120,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   status: 'not_started',
                   xDate: targetDate,
                   description: `Recurring: ${recurringTask.id} - ${recurringTask.description || ''}`.trim(),
-                  timeHorizon: 'Week'
+                  timeHorizon: 'Week',
+                  actualTime: null,
+                  caloriesIntake: null,
+                  caloriesExpenditure: null,
+                  dueDate: null
                 });
                 taskId = newTask.id;
                 createdTasks++;
@@ -1145,21 +1149,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`[SYNC DEBUG] Dry run - would create task for ${recurringTask.taskName} (total: ${createdTasks})`);
             }
 
-            // Find available quarter in the time block
+            // Find available quarter in the time block or one that can fit multiple tasks
             const existingSchedules = await storage.getDailySchedule(req.user.id, targetDate);
             const blockSchedules = existingSchedules.filter(s => s.timeBlock === timeBlock.name);
             
+            // Helper function to calculate total duration for tasks in a quarter
+            const calculateQuarterDuration = async (scheduleEntry: any): Promise<number> => {
+              let totalDuration = 0;
+              
+              if (scheduleEntry.plannedTaskId) {
+                // Get duration from planned task
+                const plannedTask = existingTasks.find(t => t.id === scheduleEntry.plannedTaskId);
+                if (plannedTask && typeof plannedTask.estimatedTime === 'number') {
+                  totalDuration += (plannedTask.estimatedTime * 60); // Convert hours to minutes
+                }
+              }
+              
+              if (scheduleEntry.reflection?.startsWith('MULTIPLE_TASKS:')) {
+                // Parse multiple recurring tasks and sum their durations
+                const taskNamesStr = scheduleEntry.reflection.replace('MULTIPLE_TASKS:', '');
+                const taskNames = taskNamesStr.split('|');
+                for (const taskName of taskNames) {
+                  const recurringTaskMatch = recurringTasks.find(rt => rt.taskName.trim() === taskName.trim());
+                  if (recurringTaskMatch) {
+                    totalDuration += recurringTaskMatch.durationMinutes;
+                  }
+                }
+              } else if (scheduleEntry.reflection?.startsWith('RECURRING_TASK:')) {
+                // Single recurring task
+                const taskName = scheduleEntry.reflection.replace('RECURRING_TASK:', '');
+                const recurringTaskMatch = recurringTasks.find(rt => rt.taskName.trim() === taskName.trim());
+                if (recurringTaskMatch) {
+                  totalDuration += recurringTaskMatch.durationMinutes;
+                }
+              }
+              
+              return totalDuration;
+            };
+            
             let targetQuarter = recurringTask.quarter || 1;
             let quarterFound = false;
+            const currentTaskDuration = recurringTask.durationMinutes || 15; // Default 15 minutes
+            const quarterCapacityMinutes = 30; // Assuming 30 minutes per quarter (2 hours / 4 quarters)
 
             // Try quarters 1-4 starting from preferred quarter
             for (let attempt = 0; attempt < 4; attempt++) {
               const testQuarter = ((targetQuarter - 1 + attempt) % 4) + 1;
-              const quarterOccupied = blockSchedules.some(s => s.quartile === testQuarter && s.plannedTaskId);
+              const existingEntry = blockSchedules.find(s => s.quartile === testQuarter);
               
-              if (!quarterOccupied) {
-                console.log(`[SYNC DEBUG] Found available quarter ${testQuarter} in ${timeBlock.name} for ${recurringTask.taskName}`);
-                // Found available quarter
+              if (!existingEntry) {
+                // Quarter is completely empty
+                console.log(`[SYNC DEBUG] Found empty quarter ${testQuarter} in ${timeBlock.name} for ${recurringTask.taskName}`);
                 if (!dryRun) {
                   await storage.createDailyScheduleEntry({
                     userId: req.user.id,
@@ -1167,19 +1207,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     timeBlock: timeBlock.name,
                     quartile: testQuarter,
                     plannedTaskId: taskId,
-                    actualTime: null,
-                    notes: `Synced from recurring task: ${recurringTask.taskName}`,
-                    energy: null,
+                    status: 'not_started',
                     reflection: null
                   });
                   console.log(`[SYNC DEBUG] Created daily schedule entry for ${recurringTask.taskName} in ${timeBlock.name} Q${testQuarter}`);
                 }
                 createdSchedules++;
-                console.log(`[SYNC DEBUG] Created schedule entry (total: ${createdSchedules})`);
                 quarterFound = true;
                 break;
               } else {
-                console.log(`[SYNC DEBUG] Quarter ${testQuarter} in ${timeBlock.name} is occupied`);
+                // Quarter has existing content - check if new task can fit
+                const existingDuration = await calculateQuarterDuration(existingEntry);
+                const totalDurationWithNew = existingDuration + currentTaskDuration;
+                
+                console.log(`[SYNC DEBUG] Quarter ${testQuarter} occupied with ${existingDuration}min, adding ${currentTaskDuration}min = ${totalDurationWithNew}min (capacity: ${quarterCapacityMinutes}min)`);
+                
+                if (totalDurationWithNew <= quarterCapacityMinutes) {
+                  // Tasks can fit together - create multiple tasks entry
+                  console.log(`[SYNC DEBUG] Tasks fit together in quarter ${testQuarter}`);
+                  
+                  if (!dryRun) {
+                    let newReflection: string;
+                    
+                    if (existingEntry.reflection?.startsWith('MULTIPLE_TASKS:')) {
+                      // Add to existing multiple tasks
+                      const existingTasks = existingEntry.reflection.replace('MULTIPLE_TASKS:', '');
+                      newReflection = `MULTIPLE_TASKS:${existingTasks}|${recurringTask.taskName}`;
+                    } else if (existingEntry.reflection?.startsWith('RECURRING_TASK:')) {
+                      // Convert single recurring task to multiple
+                      const existingTask = existingEntry.reflection.replace('RECURRING_TASK:', '');
+                      newReflection = `MULTIPLE_TASKS:${existingTask}|${recurringTask.taskName}`;
+                    } else if (existingEntry.plannedTaskId) {
+                      // Has a regular planned task - add recurring task
+                      const plannedTask = existingTasks.find(t => t.id === existingEntry.plannedTaskId);
+                      if (plannedTask) {
+                        newReflection = `MULTIPLE_TASKS:${plannedTask.name}|${recurringTask.taskName}`;
+                      } else {
+                        newReflection = `MULTIPLE_TASKS:${recurringTask.taskName}`;
+                      }
+                    } else {
+                      // Fallback
+                      newReflection = `MULTIPLE_TASKS:${recurringTask.taskName}`;
+                    }
+                    
+                    // Update existing schedule entry to include multiple tasks
+                    await storage.updateDailyScheduleEntry(existingEntry.id, req.user.id, {
+                      reflection: newReflection
+                    });
+                    
+                    console.log(`[SYNC DEBUG] Updated schedule entry to include multiple tasks: ${newReflection}`);
+                  }
+                  
+                  createdSchedules++;
+                  quarterFound = true;
+                  break;
+                } else {
+                  console.log(`[SYNC DEBUG] Quarter ${testQuarter} cannot fit ${currentTaskDuration}min task (would exceed capacity)`);
+                }
               }
             }
 
