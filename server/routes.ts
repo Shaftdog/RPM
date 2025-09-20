@@ -778,8 +778,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const mimeType = file.mimetype;
           
           if (mimeType.startsWith('image/')) {
+            console.log(`Processing image file: ${file.originalname}, type: ${mimeType}, size: ${fileBuffer.length} bytes`);
             const base64Image = fileBuffer.toString('base64');
             const imageTasks = await analyzeImage(base64Image, mimeType);
+            console.log(`Image analysis returned ${imageTasks.length} tasks:`, imageTasks);
+            
             // Convert regular tasks to recurring tasks format
             const recurringTasks = imageTasks.map(task => ({
               taskName: task.name,
@@ -833,7 +836,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (tasks.length === 0) {
-        return res.status(400).json({ message: 'No content provided for extraction or no tasks found' });
+        if (req.files && req.files.length > 0) {
+          const fileTypes = req.files.map((f: any) => f.mimetype).join(', ');
+          return res.status(400).json({ 
+            message: `No actionable tasks found in the uploaded file(s) (${fileTypes}). Please try uploading an image with text, task lists, or schedules that contain clear actionable items.` 
+          });
+        } else {
+          return res.status(400).json({ message: 'No content provided for extraction' });
+        }
       }
 
       res.json({ tasks });
