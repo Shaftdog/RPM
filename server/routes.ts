@@ -1339,7 +1339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             let targetQuarter = recurringTask.quarter || 1;
             let quarterFound = false;
             const currentTaskDuration = recurringTask.durationMinutes || 15; // Default 15 minutes
-            const quarterCapacityMinutes = 30; // Assuming 30 minutes per quarter (2 hours / 4 quarters)
+            const quarterCapacityMinutes = 999; // Allow unlimited tasks per quarter for now (user not concerned about load balancing)
 
             // Try quarters 1-4 starting from preferred quarter
             for (let attempt = 0; attempt < 4; attempt++) {
