@@ -1347,7 +1347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const existingEntry = blockSchedules.find(s => s.quartile === testQuarter);
               
               if (!existingEntry) {
-                // Quarter is completely empty
+                // Quarter is completely empty - use RECURRING_TASK format for first recurring task
                 console.log(`[SYNC DEBUG] Found empty quarter ${testQuarter} in ${timeBlock.name} for ${recurringTask.taskName}`);
                 if (!dryRun) {
                   await storage.createDailyScheduleEntry({
@@ -1355,9 +1355,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     date: targetDate,
                     timeBlock: timeBlock.name,
                     quartile: testQuarter,
-                    plannedTaskId: taskId,
+                    plannedTaskId: null, // Don't use plannedTaskId for recurring tasks
                     status: 'not_started',
-                    reflection: null
+                    reflection: `RECURRING_TASK:${recurringTask.taskName}`
                   });
                   console.log(`[SYNC DEBUG] Created daily schedule entry for ${recurringTask.taskName} in ${timeBlock.name} Q${testQuarter}`);
                 }
