@@ -1147,11 +1147,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/recurring/sync-to-daily', isAuthenticated, async (req: any, res) => {
     try {
       const syncSchema = z.object({
-        targetDate: z.string().optional().default(new Date().toISOString().slice(0, 10))
+        targetDate: z.string().optional().default(new Date().toISOString().slice(0, 10)),
+        dryRun: z.boolean().optional().default(false)
       });
 
-      const { targetDate } = syncSchema.parse(req.body);
-      const baseline = new Date(baselineDate);
+      const { targetDate, dryRun } = syncSchema.parse(req.body);
+      const baseline = new Date(targetDate);
       
       // Get all active recurring tasks for the user
       const recurringTasks = await storage.getRecurringTasks(req.user.id);
