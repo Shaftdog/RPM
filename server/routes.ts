@@ -1143,16 +1143,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Sync Recurring Tasks to Daily Schedule
+  // Sync Recurring Tasks to Daily Schedule (Rebuild Mode)
   app.post('/api/recurring/sync-to-daily', isAuthenticated, async (req: any, res) => {
     try {
       const syncSchema = z.object({
-        baselineDate: z.string().optional().default(new Date().toISOString().slice(0, 10)),
-        mode: z.enum(['next-occurrence', 'week']).optional().default('next-occurrence'),
-        dryRun: z.boolean().optional().default(false)
+        targetDate: z.string().optional().default(new Date().toISOString().slice(0, 10))
       });
 
-      const { baselineDate, mode, dryRun } = syncSchema.parse(req.body);
+      const { targetDate } = syncSchema.parse(req.body);
       const baseline = new Date(baselineDate);
       
       // Get all active recurring tasks for the user
