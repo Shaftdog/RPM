@@ -52,6 +52,7 @@ interface Task {
   progress: number;
   status: string;
   why?: string;
+  description?: string;
   dueDate?: string | null;
   xDate?: string | null;
 }
@@ -192,8 +193,11 @@ export default function StrategicPlanningMatrix() {
     });
   });
 
-  // Populate matrix with tasks (exclude completed tasks)
-  tasks.filter(task => task.status !== 'completed').forEach(task => {
+  // Populate matrix with tasks (exclude completed tasks and recurring task instances)
+  tasks.filter(task => 
+    task.status !== 'completed' && 
+    !(task.description && task.description.startsWith('Recurring: '))
+  ).forEach(task => {
     let horizon = task.timeHorizon === '1 Year' ? '1 Year' : 
                   task.timeHorizon === '5 Year' ? '5 Year' : 
                   task.timeHorizon === '10 Year' ? '10 Year' : 
