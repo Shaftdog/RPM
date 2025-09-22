@@ -395,33 +395,44 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
             {
               type: "text",
               text: `
-              Look at this image and find all task names, activities, or items that could be recurring tasks.
+              Analyze this image and extract any tasks, activities, or actionable items you can identify.
               
-              Extract every item you can see that looks like a task, activity, or routine. Look for:
-              - Task names in any table or list
-              - Activities with time durations 
-              - Any routine or habit mentioned
-              - Work sessions, meetings, exercises, etc.
+              Look for:
+              - Task names in lists, tables, or schedules
+              - Activities with time durations or frequency
+              - Meetings, appointments, or sessions
+              - Routines, habits, or recurring activities  
+              - Work items, projects, or deliverables
+              - Personal activities like exercise, meals, or self-care
+              - Any text that represents an actionable item
               
-              For each task you find, return it in this simple JSON format:
+              For each task found, determine appropriate categories:
+              - type: "Task" (for most items), "Milestone" (for major goals), "Sub-Milestone" (for smaller goals), "Subtask" (for components)
+              - category: "Personal" (health, relationships, personal development) or "Business" (work, marketing, operations)
+              - subcategory: For Personal: "Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure". For Business: "Marketing", "Sales", "Operations", "Products", "Production"
+              - timeHorizon: "Today", "Week", "Quarter", "1 Year", "5 Year", or "10 Year"
+              - priority: "High", "Medium", or "Low"
+              - estimatedTime: Hours as decimal (e.g., 0.5 for 30 minutes, 1.0 for 1 hour)
+              
+              Return JSON format:
               {
                 "tasks": [
                   {
-                    "name": "exact task name from image",
+                    "name": "Exact task name from image",
                     "type": "Task",
                     "category": "Personal",
-                    "subcategory": "Physical",
+                    "subcategory": "Physical", 
                     "timeHorizon": "Week",
                     "priority": "Medium",
                     "estimatedTime": 0.5,
-                    "why": "regular activity",
-                    "description": "recurring task",
+                    "why": "Brief reason for doing this task",
+                    "description": "Optional additional details",
                     "dependencies": []
                   }
                 ]
               }
               
-              Important: Extract every single task/activity you can see in the image, even if you're not 100% sure it's a task.
+              Only extract clear, actionable items. If no tasks are visible, return {"tasks": []}.
               `
             },
             {
@@ -440,124 +451,27 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
     const rawContent = response.choices[0].message.content || "{}";
     console.log('Raw AI image analysis response:', rawContent);
     
-    // If AI returns empty response, provide fallback tasks from your image
+    // If AI returns empty response, return empty array rather than hardcoded tasks
     if (rawContent.trim() === '{}' || rawContent.trim() === '') {
-      console.log('AI returned empty response, providing manual task extraction fallback');
-      const fallbackTasks: ExtractedTask[] = [
-        {
-          name: "Life Aid (M)",
-          type: "Task" as const,
-          category: "Personal" as const,
-          subcategory: "Physical" as const,
-          timeHorizon: "Week" as const,
-          priority: "Medium" as const, 
-          estimatedTime: 0.25,
-          why: "regular health maintenance",
-          description: "Life Aid supplement routine",
-          dependencies: []
-        },
-        {
-          name: "AI BOT DEVELOPMENT WORK SESSION (M)",
-          type: "Task" as const,
-          category: "Business" as const,
-          subcategory: "Operations" as const,
-          timeHorizon: "Week" as const,
-          priority: "High" as const,
-          estimatedTime: 1.0,
-          why: "business development",
-          description: "AI development work session",
-          dependencies: []
-        },
-        {
-          name: "ACV (M)",
-          type: "Task" as const,
-          category: "Personal" as const, 
-          subcategory: "Physical" as const,
-          timeHorizon: "Week" as const,
-          priority: "Medium" as const,
-          estimatedTime: 0.15,
-          why: "health routine",
-          description: "Apple Cider Vinegar routine",
-          dependencies: []
-        },
-        {
-          name: "Dinner (M)",
-          type: "Task" as const,
-          category: "Personal" as const,
-          subcategory: "Physical" as const, 
-          timeHorizon: "Week" as const,
-          priority: "Medium" as const,
-          estimatedTime: 0.25,
-          why: "daily nutrition",
-          description: "Evening meal",
-          dependencies: []
-        },
-        {
-          name: "Environmental (M)",
-          type: "Task" as const,
-          category: "Personal" as const,
-          subcategory: "Environmental" as const,
-          timeHorizon: "Week" as const, 
-          priority: "Medium" as const,
-          estimatedTime: 0.50,
-          why: "environmental care",
-          description: "Environmental maintenance tasks",
-          dependencies: []
-        },
-        {
-          name: "Plan Tomorrow / Apply Capture (M)",
-          type: "Task" as const,
-          category: "Personal" as const,
-          subcategory: "Mental" as const,
-          timeHorizon: "Week" as const,
-          priority: "High" as const,
-          estimatedTime: 0.50,
-          why: "daily planning",
-          description: "Planning and review session",
-          dependencies: []
-        },
-        {
-          name: "Evening Walk (M)",
-          type: "Task" as const,
-          category: "Personal" as const,
-          subcategory: "Physical" as const,
-          timeHorizon: "Week" as const,
-          priority: "Medium" as const,
-          estimatedTime: 0.50,
-          why: "exercise and wellness",
-          description: "Evening walk routine",
-          dependencies: []
-        },
-        {
-          name: "Bedtime Tea - Stretching - BP Pills(M)",
-          type: "Task" as const,
-          category: "Personal" as const,
-          subcategory: "Physical" as const, 
-          timeHorizon: "Week" as const,
-          priority: "Medium" as const,
-          estimatedTime: 0.50,
-          why: "bedtime routine",
-          description: "Evening wellness routine",
-          dependencies: []
-        },
-        {
-          name: "WIND DOWN (M)",
-          type: "Task" as const,
-          category: "Personal" as const,
-          subcategory: "Mental" as const,
-          timeHorizon: "Week" as const,
-          priority: "Medium" as const,
-          estimatedTime: 0.50,
-          why: "sleep preparation",
-          description: "Evening wind down routine",
-          dependencies: []
-        }
-      ];
-      return fallbackTasks;
+      console.log('AI returned empty response - no tasks could be extracted from this image');
+      return [];
     }
     
-    const result = JSON.parse(rawContent);
-    console.log('Parsed AI result:', JSON.stringify(result, null, 2));
+    let result;
+    try {
+      result = JSON.parse(rawContent);
+      console.log('Parsed AI result:', JSON.stringify(result, null, 2));
+    } catch (parseError) {
+      console.error('Failed to parse AI response as JSON:', parseError);
+      console.error('Raw content was:', rawContent);
+      return [];
+    }
+    
+    // Validate that result has the expected structure
+    if (!result || !Array.isArray(result.tasks)) {
+      console.log('AI response does not contain valid tasks array');
+      return [];
+    }
     
     // Fix subcategories that don't match our enum values
     const validPersonalSubcategories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure'];
@@ -596,7 +510,10 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
   } catch (error) {
     console.error("Error analyzing image - Full details:", error);
     console.error("Error stack:", error instanceof Error ? error.stack : error);
-    throw new Error("Failed to analyze image for tasks");
+    
+    // Return empty array instead of throwing error to be more graceful
+    console.log("Returning empty task array due to analysis error");
+    return [];
   }
 }
 
