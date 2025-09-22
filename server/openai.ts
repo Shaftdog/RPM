@@ -3,7 +3,8 @@ import { TIME_BLOCKS } from "@shared/schema";
 
 // Using GPT-5, the newest OpenAI model released August 7, 2025
 const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key"
+  apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key",
+  timeout: 15000, // 15 second timeout
 });
 
 export interface ExtractedTask {
@@ -20,8 +21,21 @@ export interface ExtractedTask {
   dependencies: string[];
 }
 
+// Helper function to check if valid OpenAI API key is available
+function hasValidOpenAIKey(): boolean {
+  const key = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
+  return !!(key && key !== "default_key" && key.startsWith("sk-"));
+}
+
 export async function extractTasksFromContent(content: string): Promise<ExtractedTask[]> {
+  // Check if OpenAI API key is available
+  if (!hasValidOpenAIKey()) {
+    console.warn("OpenAI API key not configured, using local extraction fallback");
+    return extractTasksLocally(content);
+  }
+
   try {
+    console.log("Extracting tasks with GPT-5...");
     const prompt = `
     Analyze this content and extract actionable tasks. For each task, return a JSON object with these exact field names:
     
@@ -50,27 +64,82 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
     ${content}
     `;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5",
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert task extraction AI. Extract actionable tasks from content and structure them properly as JSON."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      response_format: { type: "json_object" },
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('OpenAI request timeout')), 10000); // 10 second timeout
     });
 
+    // Race the OpenAI call against the timeout
+    const response = await Promise.race([
+      openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert task extraction AI. Extract actionable tasks from content and structure them properly as JSON."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+      }),
+      timeoutPromise
+    ]);
+
     const result = JSON.parse(response.choices[0].message.content || "{}");
-    return result.tasks || [];
+    const tasks = result.tasks || [];
+    console.log(`GPT-5 extracted ${tasks.length} tasks successfully`);
+    return tasks;
   } catch (error) {
-    console.error("Error extracting tasks:", error);
-    throw new Error("Failed to extract tasks from content");
+    console.error("OpenAI extraction failed:", error);
+    console.log("Falling back to local extraction");
+    return extractTasksLocally(content);
   }
+}
+
+// Local fallback for task extraction when OpenAI is unavailable
+function extractTasksLocally(content: string): ExtractedTask[] {
+  console.log("Using local task extraction fallback");
+  
+  // Simple keyword-based extraction
+  const lines = content.split('\n').filter(line => line.trim());
+  const tasks: ExtractedTask[] = [];
+  
+  // Look for action words and patterns
+  const actionWords = ['complete', 'finish', 'create', 'build', 'write', 'send', 'call', 'schedule', 'review', 'update', 'plan', 'organize', 'prepare', 'implement', 'develop', 'design', 'test', 'deploy', 'fix', 'analyze'];
+  
+  lines.forEach((line, index) => {
+    const lowerLine = line.toLowerCase();
+    
+    // Check if line contains action words or task indicators
+    const hasActionWord = actionWords.some(word => lowerLine.includes(word));
+    const hasTaskIndicator = lowerLine.includes('task') || lowerLine.includes('todo') || lowerLine.includes('action') || line.match(/^\d+[.)]/) || line.startsWith('-') || line.startsWith('*');
+    
+    if (hasActionWord || hasTaskIndicator) {
+      // Clean up the line to make it a proper task name
+      let taskName = line.replace(/^[\d\-\*\.\)\s]+/, '').trim();
+      
+      if (taskName && taskName.length > 3) {
+        tasks.push({
+          name: taskName,
+          type: "Task",
+          category: "Personal",
+          subcategory: "Mental",
+          timeHorizon: "Week",
+          priority: "Medium",
+          estimatedTime: 1,
+          dependencies: [],
+          why: "Extracted from content"
+        });
+      }
+    }
+  });
+  
+  console.log(`Local extraction found ${tasks.length} tasks`);
+  return tasks;
 }
 
 // Local fallback scheduler when OpenAI is unavailable
@@ -223,9 +292,7 @@ export async function generateDailySchedule(
   const OPENAI_TIMEOUT_MS = 18000; // 18 second timeout
   
   // Check if we have a valid OpenAI API key
-  const hasValidKey = process.env.OPENAI_API_KEY && 
-                     process.env.OPENAI_API_KEY !== "default_key" && 
-                     process.env.OPENAI_API_KEY.startsWith("sk-");
+  const hasValidKey = hasValidOpenAIKey();
   
   if (!hasValidKey) {
     console.log("OpenAI API key not configured, using local fallback scheduler");
@@ -305,7 +372,7 @@ export async function generateDailySchedule(
         }
       ],
       response_format: { type: "json_object" },
-      max_completion_tokens: 2000,
+      max_tokens: 2000,
     }, {
       signal: controller.signal
     });
@@ -445,7 +512,7 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
       ],
       response_format: { type: "json_object" },
-      max_completion_tokens: 1000,
+      max_tokens: 1000,
     });
 
     const rawContent = response.choices[0].message.content || "{}";
