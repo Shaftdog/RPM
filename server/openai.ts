@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { TIME_BLOCKS } from "@shared/schema";
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+// Using gpt-4o model for reliable OpenAI API compatibility
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key"
 });
@@ -51,11 +51,11 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: "You are an expert task extraction AI. Extract actionable tasks from content and structure them properly."
+          content: "You are an expert task extraction AI. Extract actionable tasks from content and structure them properly as JSON."
         },
         {
           role: "user",
@@ -293,7 +293,7 @@ export async function generateDailySchedule(
     const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -356,7 +356,7 @@ export async function processAICommand(
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -387,7 +387,7 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
     const imageFormat = mimeType.replace('image/', '');
     
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "user",
@@ -564,11 +564,11 @@ export async function extractRecurringTasksFromContent(content: string): Promise
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: "You are an expert at identifying recurring patterns and habits from content. Extract recurring tasks, routines, and regular activities that someone would want to schedule repeatedly."
+          content: "You are an expert at identifying recurring patterns and habits from content. Extract recurring tasks, routines, and regular activities that someone would want to schedule repeatedly. Return results as JSON."
         },
         {
           role: "user",
@@ -633,7 +633,7 @@ export async function processRecurringTaskChatCommand(
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
