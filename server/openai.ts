@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { TIME_BLOCKS } from "@shared/schema";
 
-// Using gpt-4o model for reliable OpenAI API compatibility
+// Using GPT-5, the newest OpenAI model released August 7, 2025
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key"
 });
@@ -51,7 +51,7 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "system",
@@ -293,7 +293,7 @@ export async function generateDailySchedule(
     const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "system",
@@ -356,7 +356,7 @@ export async function processAICommand(
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "system",
@@ -387,7 +387,7 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
     const imageFormat = mimeType.replace('image/', '');
     
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "user",
@@ -564,7 +564,7 @@ export async function extractRecurringTasksFromContent(content: string): Promise
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "system",
@@ -633,7 +633,7 @@ export async function processRecurringTaskChatCommand(
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "system",
