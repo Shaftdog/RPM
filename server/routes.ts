@@ -1531,76 +1531,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
   
+  // Helper function for WebSocket authentication
+  async function authenticateWebSocketConnection(req: any): Promise<string | null> {
+    try {
+      // Parse cookies from WebSocket request
+      const cookies = req.headers.cookie;
+      if (!cookies) {
+        throw new Error('Authentication required - no cookies provided');
+      }
+      
+      // Extract session ID from cookies (connect.sid)
+      const sessionCookie = cookies.split(';')
+        .find((cookie: string) => cookie.trim().startsWith('connect.sid='));
+      
+      if (!sessionCookie) {
+        throw new Error('Session cookie not found');
+      }
+      
+      // Properly decode the session ID (URL-encoded)
+      const encodedSessionId = sessionCookie.split('=')[1];
+      if (!encodedSessionId) {
+        throw new Error('Invalid session cookie format');
+      }
+      
+      const sessionId = decodeURIComponent(encodedSessionId);
+      
+      // Remove the 's:' prefix and signature from signed cookie
+      const actualSessionId = sessionId.startsWith('s:') 
+        ? sessionId.substring(2).split('.')[0] 
+        : sessionId;
+      
+      if (!actualSessionId) {
+        throw new Error('Invalid session ID format');
+      }
+      
+      // Get session from store with timeout
+      const sessionStore = storage.sessionStore;
+      const sessionData = await new Promise<any>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error('Session store query timeout'));
+        }, 5000); // 5 second timeout
+        
+        sessionStore.get(actualSessionId, (err, session) => {
+          clearTimeout(timeoutId);
+          if (err) reject(err);
+          else resolve(session);
+        });
+      });
+      
+      if (!sessionData) {
+        throw new Error('Session not found or expired');
+      }
+      
+      if (!sessionData.passport?.user) {
+        throw new Error('No authenticated user in session');
+      }
+      
+      // Validate user ID format
+      const userId = sessionData.passport.user;
+      if (typeof userId !== 'string' || !userId.trim()) {
+        throw new Error('Invalid user ID in session');
+      }
+      
+      return userId;
+      
+    } catch (error) {
+      console.error('WebSocket authentication error:', error instanceof Error ? error.message : error);
+      return null;
+    }
+  }
+
   // WebSocket Setup
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   const userConnections = new Map<string, Set<WebSocket>>();
 
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', async (ws, req) => {
     let userId: string | null = null;
     
-    // Secure WebSocket authentication using session cookie
-    async function authenticateConnection() {
-      try {
-        // Parse cookies from WebSocket request
-        const cookies = req.headers.cookie;
-        if (!cookies) {
-          ws.close(1008, 'Authentication required');
-          return;
-        }
-        
-        // Extract session ID from cookies (connect.sid)
-        const sessionCookie = cookies.split(';')
-          .find(cookie => cookie.trim().startsWith('connect.sid='));
-        
-        if (!sessionCookie) {
-          ws.close(1008, 'Session cookie not found');
-          return;
-        }
-        
-        // Properly decode the session ID (URL-encoded)
-        const encodedSessionId = sessionCookie.split('=')[1];
-        const sessionId = decodeURIComponent(encodedSessionId);
-        
-        // Remove the 's:' prefix and signature from signed cookie
-        const actualSessionId = sessionId.startsWith('s:') 
-          ? sessionId.substring(2).split('.')[0] 
-          : sessionId;
-        
-        // Get session from store
-        const sessionStore = storage.sessionStore;
-        const sessionData = await new Promise<any>((resolve, reject) => {
-          sessionStore.get(actualSessionId, (err, session) => {
-            if (err) reject(err);
-            else resolve(session);
-          });
-        });
-        
-        if (!sessionData || !sessionData.passport?.user) {
-          ws.close(1008, 'Invalid or expired session');
-          return;
-        }
-        
-        // Extract authenticated user ID from session
-        userId = sessionData.passport.user;
-        
-        // Add connection to user's connection set
-        if (userId) {
-          if (!userConnections.has(userId)) {
-            userConnections.set(userId, new Set());
-          }
-          userConnections.get(userId)!.add(ws);
-        }
-        
-        ws.send(JSON.stringify({ type: 'auth_success', userId }));
-        
-      } catch (error) {
-        console.error('WebSocket authentication error:', error);
+    try {
+      // Authenticate connection using improved utility function
+      userId = await authenticateWebSocketConnection(req);
+      
+      if (!userId) {
         ws.close(1008, 'Authentication failed');
+        return;
       }
+      
+      // Add connection to user's connection set
+      if (!userConnections.has(userId)) {
+        userConnections.set(userId, new Set());
+      }
+      userConnections.get(userId)!.add(ws);
+      
+      ws.send(JSON.stringify({ type: 'auth_success', userId }));
+      console.log(`WebSocket authenticated for user: ${userId}`);
+      
+    } catch (error) {
+      console.error('WebSocket connection error:', error);
+      ws.close(1008, 'Connection failed');
+      return;
     }
-    
-    // Authenticate immediately on connection
-    authenticateConnection();
     
     ws.on('message', (message) => {
       try {
