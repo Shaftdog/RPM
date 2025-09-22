@@ -512,7 +512,7 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 1000,
+      max_completion_tokens: 1000,
     });
 
     const rawContent = response.choices[0].message.content || "{}";
