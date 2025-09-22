@@ -232,11 +232,6 @@ export async function generateDailySchedule(
     return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
   }
 
-  // Temporarily disable OpenAI to avoid timeout issues until we fix the API response
-  console.log("Using local scheduler for regular tasks only (recurring tasks handled by Sync to Daily)");
-  return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
-
-  /*
   try {
     // Include ALL tasks and recurring tasks - no arbitrary limits
     const trimmedTasks = filteredTasks.map(t => ({
@@ -324,7 +319,6 @@ export async function generateDailySchedule(
     console.log("Falling back to local scheduler");
     return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
   }
-  */
 }
 
 export async function processAICommand(
@@ -449,14 +443,14 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
     // If AI returns empty response, provide fallback tasks from your image
     if (rawContent.trim() === '{}' || rawContent.trim() === '') {
       console.log('AI returned empty response, providing manual task extraction fallback');
-      const fallbackTasks = [
+      const fallbackTasks: ExtractedTask[] = [
         {
           name: "Life Aid (M)",
-          type: "Task",
-          category: "Personal",
-          subcategory: "Physical",
-          timeHorizon: "Week",
-          priority: "Medium", 
+          type: "Task" as const,
+          category: "Personal" as const,
+          subcategory: "Physical" as const,
+          timeHorizon: "Week" as const,
+          priority: "Medium" as const, 
           estimatedTime: 0.25,
           why: "regular health maintenance",
           description: "Life Aid supplement routine",
@@ -464,11 +458,11 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
         {
           name: "AI BOT DEVELOPMENT WORK SESSION (M)",
-          type: "Task",
-          category: "Business",
-          subcategory: "Operations",
-          timeHorizon: "Week",
-          priority: "High",
+          type: "Task" as const,
+          category: "Business" as const,
+          subcategory: "Operations" as const,
+          timeHorizon: "Week" as const,
+          priority: "High" as const,
           estimatedTime: 1.0,
           why: "business development",
           description: "AI development work session",
@@ -476,11 +470,11 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
         {
           name: "ACV (M)",
-          type: "Task",
-          category: "Personal", 
-          subcategory: "Physical",
-          timeHorizon: "Week",
-          priority: "Medium",
+          type: "Task" as const,
+          category: "Personal" as const, 
+          subcategory: "Physical" as const,
+          timeHorizon: "Week" as const,
+          priority: "Medium" as const,
           estimatedTime: 0.15,
           why: "health routine",
           description: "Apple Cider Vinegar routine",
@@ -488,11 +482,11 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
         {
           name: "Dinner (M)",
-          type: "Task",
-          category: "Personal",
-          subcategory: "Physical", 
-          timeHorizon: "Week",
-          priority: "Medium",
+          type: "Task" as const,
+          category: "Personal" as const,
+          subcategory: "Physical" as const, 
+          timeHorizon: "Week" as const,
+          priority: "Medium" as const,
           estimatedTime: 0.25,
           why: "daily nutrition",
           description: "Evening meal",
@@ -500,11 +494,11 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
         {
           name: "Environmental (M)",
-          type: "Task",
-          category: "Personal",
-          subcategory: "Environmental",
-          timeHorizon: "Week", 
-          priority: "Medium",
+          type: "Task" as const,
+          category: "Personal" as const,
+          subcategory: "Environmental" as const,
+          timeHorizon: "Week" as const, 
+          priority: "Medium" as const,
           estimatedTime: 0.50,
           why: "environmental care",
           description: "Environmental maintenance tasks",
@@ -512,11 +506,11 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
         {
           name: "Plan Tomorrow / Apply Capture (M)",
-          type: "Task",
-          category: "Personal",
-          subcategory: "Mental",
-          timeHorizon: "Week",
-          priority: "High",
+          type: "Task" as const,
+          category: "Personal" as const,
+          subcategory: "Mental" as const,
+          timeHorizon: "Week" as const,
+          priority: "High" as const,
           estimatedTime: 0.50,
           why: "daily planning",
           description: "Planning and review session",
@@ -524,11 +518,11 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
         {
           name: "Evening Walk (M)",
-          type: "Task",
-          category: "Personal",
-          subcategory: "Physical",
-          timeHorizon: "Week",
-          priority: "Medium",
+          type: "Task" as const,
+          category: "Personal" as const,
+          subcategory: "Physical" as const,
+          timeHorizon: "Week" as const,
+          priority: "Medium" as const,
           estimatedTime: 0.50,
           why: "exercise and wellness",
           description: "Evening walk routine",
@@ -536,11 +530,11 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
         {
           name: "Bedtime Tea - Stretching - BP Pills(M)",
-          type: "Task",
-          category: "Personal",
-          subcategory: "Physical", 
-          timeHorizon: "Week",
-          priority: "Medium",
+          type: "Task" as const,
+          category: "Personal" as const,
+          subcategory: "Physical" as const, 
+          timeHorizon: "Week" as const,
+          priority: "Medium" as const,
           estimatedTime: 0.50,
           why: "bedtime routine",
           description: "Evening wellness routine",
@@ -548,11 +542,11 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
         {
           name: "WIND DOWN (M)",
-          type: "Task",
-          category: "Personal",
-          subcategory: "Mental",
-          timeHorizon: "Week",
-          priority: "Medium",
+          type: "Task" as const,
+          category: "Personal" as const,
+          subcategory: "Mental" as const,
+          timeHorizon: "Week" as const,
+          priority: "Medium" as const,
           estimatedTime: 0.50,
           why: "sleep preparation",
           description: "Evening wind down routine",

@@ -12,19 +12,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target, Info } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { TIME_BLOCKS as CANONICAL_TIME_BLOCKS } from "@shared/schema";
 
-const TIME_BLOCKS = [
-  { name: "Recover", time: "12am-7am", quartiles: 4 },
-  { name: "PHYSICAL MENTAL", time: "7-9AM", quartiles: 4 },
-  { name: "CHIEF PROJECT", time: "9-11AM", quartiles: 4 },
-  { name: "HOUR OF POWER", time: "11-12PM", quartiles: 4 },
-  { name: "PRODUCTION WORK", time: "12-2PM", quartiles: 4 },
-  { name: "COMPANY BLOCK", time: "2-4PM", quartiles: 4 },
-  { name: "BUSINESS AUTOMATION", time: "4-6PM", quartiles: 4 },
-  { name: "ENVIRONMENTAL", time: "6-8PM", quartiles: 4 },
-  { name: "FLEXIBLE BLOCK", time: "8-10PM", quartiles: 4 },
-  { name: "WIND DOWN", time: "10PM-12AM", quartiles: 4 },
-];
+// Convert canonical TIME_BLOCKS to frontend format with time display and quartiles
+const TIME_BLOCKS = CANONICAL_TIME_BLOCKS.map(block => ({
+  name: block.name,
+  time: `${block.start}-${block.end}`,
+  quartiles: 4
+}));
 
 interface DailyScheduleEntry {
   id?: string;
