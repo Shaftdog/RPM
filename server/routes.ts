@@ -914,6 +914,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clear daily schedule endpoint
+  app.post('/api/daily/clear/:date', isAuthenticated, async (req: any, res) => {
+    try {
+      const dateParam = req.params.date;
+      
+      // Validate date parameter
+      if (!dateParam) {
+        return res.status(400).json({ message: "Date parameter is required" });
+      }
+      
+      const date = new Date(dateParam);
+      if (isNaN(date.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      
+      await storage.clearDailySchedule(req.user.id, date);
+      res.json({ message: "Daily schedule cleared successfully" });
+      
+      // Broadcast to WebSocket clients
+      broadcastToUser(req.user.id, { type: 'schedule_cleared', data: { date: dateParam } });
+    } catch (error) {
+      console.error("Error clearing daily schedule:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to clear schedule";
+      res.status(500).json({ message: errorMessage });
+    }
+  });
+
   // AI Integration Routes
   app.post('/api/ai/chat', isAuthenticated, async (req: any, res) => {
     try {

@@ -404,22 +404,33 @@ export async function processAICommand(
     
     Context:
     - Current tasks: ${context.tasks.length} tasks
-    - Task categories and priorities available
-    - Strategic planning matrix with time horizons
-    - Daily schedule with time blocks
+    - Available tasks: ${JSON.stringify(context.tasks.slice(0, 5).map(t => ({ id: t.id, name: t.name, timeHorizon: t.timeHorizon, priority: t.priority })))}
+
+    Available Action Types:
+    1. move_task: Move tasks between time horizons or categories
+       Format: { "type": "move_task", "taskId": "uuid", "updates": { "newTimeHorizon": "Week|Quarter|Month|Today", "newCategory": "Personal|Business", "newSubcategory": "Physical|Mental|etc" } }
     
-    Available Actions:
-    - Move tasks between time horizons or categories
-    - Reschedule tasks based on energy/priority
-    - Generate reports or insights
-    - Reorganize task priorities
-    - Balance personal vs business tasks
+    2. update_task: Update task properties like priority or status
+       Format: { "type": "update_task", "taskId": "uuid", "updates": { "priority": "High|Medium|Low", "status": "not_started|in_progress|completed" } }
+    
+    3. clear_schedule: Clear all tasks from today's schedule
+       Format: { "type": "clear_schedule", "date": "YYYY-MM-DD" }
+    
+    TODAY'S DATE: ${new Date().toISOString().split('T')[0]}
+    
+    When user says "clear my schedule", "clear today", or "move tasks off today", provide clear_schedule action with today's date.
+    When user says "move task X to next week", provide move_task action with newTimeHorizon: "Week".
+    When user asks to reschedule or reorganize, provide specific move_task actions for individual tasks.
+    
+    IMPORTANT: Always provide specific actions that can be executed. Don't just explain what you would do - actually provide the action objects!
     
     Respond with a JSON object containing:
-    - response: A helpful explanation of what you're doing
-    - actions: Array of specific actions to take (optional)
+    - response: A helpful explanation of what you're doing (be conversational)
+    - actions: Array of specific executable actions (REQUIRED - don't just talk, provide actions!)
     
-    Make the response conversational and helpful.
+    Example responses:
+    - For "clear my schedule": { "response": "I'll clear everything from today's schedule.", "actions": [{ "type": "clear_schedule", "date": "${new Date().toISOString().split('T')[0]}" }] }
+    - For "move urgent tasks to today": { "response": "Moving your high-priority tasks to today.", "actions": [{ "type": "move_task", "taskId": "actual-task-id-from-context", "updates": { "newTimeHorizon": "Today" } }] }
     `;
 
     const response = await openai.chat.completions.create({

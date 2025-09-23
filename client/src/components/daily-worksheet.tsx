@@ -169,16 +169,99 @@ export default function DailyWorksheet() {
     },
   });
 
+  // Helper function to execute AI actions
+  const executeAIActions = async (actions: any[]) => {
+    if (!actions || actions.length === 0) return { success: true, failures: [] };
+
+    const results = [];
+    const failures = [];
+
+    for (const action of actions) {
+      try {
+        switch (action.type) {
+          case 'move_task':
+            if (action.taskId && action.updates) {
+              await apiRequest("POST", "/api/planning/move", {
+                taskId: action.taskId,
+                ...action.updates
+              });
+              results.push({ action, success: true });
+            } else {
+              failures.push({ action, error: 'Missing taskId or updates' });
+            }
+            break;
+          case 'update_task':
+            if (action.taskId && action.updates) {
+              await apiRequest("PUT", `/api/tasks/${action.taskId}`, action.updates);
+              results.push({ action, success: true });
+            } else {
+              failures.push({ action, error: 'Missing taskId or updates' });
+            }
+            break;
+          case 'clear_schedule':
+            if (action.date) {
+              await apiRequest("POST", `/api/daily/clear/${action.date}`);
+              results.push({ action, success: true });
+            } else {
+              failures.push({ action, error: 'Missing date' });
+            }
+            break;
+          case 'remove_from_schedule':
+            // For now, skip this action type as endpoint doesn't exist yet
+            failures.push({ action, error: 'Remove from schedule not implemented yet' });
+            break;
+          default:
+            failures.push({ action, error: 'Unknown action type' });
+        }
+      } catch (error) {
+        console.error('Error executing action:', action, error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        failures.push({ action, error: errorMessage });
+      }
+    }
+
+    return { 
+      success: failures.length === 0, 
+      failures,
+      successCount: results.length 
+    };
+  };
+
   const aiChatMutation = useMutation({
     mutationFn: async (message: string) => {
       const response = await apiRequest("POST", "/api/ai/chat", { message });
       return response.json();
     },
-    onSuccess: (data) => {
-      toast({
-        title: "AI Assistant",
-        description: data.response,
-      });
+    onSuccess: async (data) => {
+      // Execute any actions returned by the AI
+      if (data.actions && data.actions.length > 0) {
+        const result = await executeAIActions(data.actions);
+        
+        // Invalidate relevant queries after actions are executed
+        queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
+        queryClient.invalidateQueries({ queryKey: ['/api/daily'] });
+        
+        if (result.success) {
+          toast({
+            title: "AI Assistant",
+            description: `${data.response} ✅ All ${result.successCount} actions completed successfully!`,
+          });
+        } else {
+          toast({
+            title: "AI Assistant", 
+            description: `${data.response} ⚠️ ${result.failures.length} actions failed. ${result.successCount} succeeded.`,
+            variant: "destructive",
+          });
+          console.error('Action failures:', result.failures);
+        }
+      } else {
+        // No actions to execute, just show response
+        toast({
+          title: "AI Assistant",
+          description: data.response,
+        });
+      }
     },
     onError: (error) => {
       toast({
