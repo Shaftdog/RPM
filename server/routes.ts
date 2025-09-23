@@ -1002,15 +1002,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tasks.push(...contentTasks);
       }
 
+      // Even if no tasks found, return success with empty array
+      // This is better UX than showing an error
       if (tasks.length === 0) {
-        if (req.files && req.files.length > 0) {
-          const fileTypes = req.files.map((f: any) => f.mimetype).join(', ');
-          return res.status(400).json({ 
-            message: `No actionable tasks found in the uploaded file(s) (${fileTypes}). Please try uploading an image with text, task lists, or schedules that contain clear actionable items.` 
-          });
-        } else {
-          return res.status(400).json({ message: 'No content provided for extraction' });
-        }
+        console.log('No tasks extracted from content/files - returning empty array');
       }
 
       res.json({ tasks });

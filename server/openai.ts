@@ -72,7 +72,7 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
     // Race the OpenAI call against the timeout
     const response = await Promise.race([
       openai.chat.completions.create({
-        model: "gpt-5",
+        model: "gpt-4o",  // GPT-4o is the correct model for vision/image analysis
         messages: [
           {
             role: "system",
@@ -484,46 +484,27 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
           content: [
             {
               type: "text",
-              text: `
-              Analyze this image and extract any tasks, activities, or actionable items you can identify.
-              
-              Look for:
-              - Task names in lists, tables, or schedules
-              - Activities with time durations or frequency
-              - Meetings, appointments, or sessions
-              - Routines, habits, or recurring activities  
-              - Work items, projects, or deliverables
-              - Personal activities like exercise, meals, or self-care
-              - Any text that represents an actionable item
-              
-              For each task found, determine appropriate categories:
-              - type: "Task" (for most items), "Milestone" (for major goals), "Sub-Milestone" (for smaller goals), "Subtask" (for components)
-              - category: "Personal" (health, relationships, personal development) or "Business" (work, marketing, operations)
-              - subcategory: For Personal: "Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure". For Business: "Marketing", "Sales", "Operations", "Products", "Production"
-              - timeHorizon: "Today", "Week", "Quarter", "1 Year", "5 Year", or "10 Year"
-              - priority: "High", "Medium", or "Low"
-              - estimatedTime: Hours as decimal (e.g., 0.5 for 30 minutes, 1.0 for 1 hour)
-              
-              Return JSON format:
-              {
-                "tasks": [
-                  {
-                    "name": "Exact task name from image",
-                    "type": "Task",
-                    "category": "Personal",
-                    "subcategory": "Physical", 
-                    "timeHorizon": "Week",
-                    "priority": "Medium",
-                    "estimatedTime": 0.5,
-                    "why": "Brief reason for doing this task",
-                    "description": "Optional additional details",
-                    "dependencies": []
-                  }
-                ]
-              }
-              
-              Only extract clear, actionable items. If no tasks are visible, return {"tasks": []}.
-              `
+              text: `Extract ALL text visible in this image, then identify actionable tasks from that text.
+
+RETURN AS JSON with this structure:
+{
+  "tasks": [
+    {
+      "name": "task name exactly as shown in image",
+      "type": "Task",
+      "category": "Personal" or "Business",
+      "subcategory": "Physical" or "Mental" or "Operations",
+      "timeHorizon": "Week",
+      "priority": "Medium",
+      "estimatedTime": 1,
+      "why": "reason",
+      "dependencies": []
+    }
+  ]
+}
+
+If you cannot read any text or find no tasks, return: {"tasks": []}
+ALWAYS return valid JSON with a "tasks" array, even if empty.`
             },
             {
               type: "image_url",
@@ -535,7 +516,7 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
         },
       ],
       response_format: { type: "json_object" },
-      max_completion_tokens: 1000,
+      max_tokens: 1000,  // GPT-4o uses max_tokens, not max_completion_tokens
     }),
       timeoutPromise
     ]);
@@ -543,9 +524,9 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
     const rawContent = response.choices[0].message.content || "{}";
     console.log('Raw AI image analysis response:', rawContent);
     
-    // If AI returns empty response, return empty array rather than hardcoded tasks
-    if (rawContent.trim() === '{}' || rawContent.trim() === '') {
-      console.log('AI returned empty response - no tasks could be extracted from this image');
+    // If AI returns empty response or just empty tasks array, that's ok
+    if (rawContent.trim() === '{}' || rawContent.trim() === '{"tasks":[]}' || rawContent.trim() === '') {
+      console.log('No tasks found in image - returning empty array');
       return [];
     }
     
