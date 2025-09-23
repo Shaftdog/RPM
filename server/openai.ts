@@ -49,7 +49,7 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
     4. subcategory: 
        - For Personal: "Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure"
        - For Business: "Marketing", "Sales", "Operations", "Products", "Production"
-    5. timeHorizon: One of: "10 Year", "5 Year", "1 Year", "Month", "Quarter", "Week", "Today"
+    5. timeHorizon: One of: "10 Year", "5 Year", "1 Year", "Quarter", "Month", "Week", "Today"
     6. priority: "High", "Medium", or "Low"
     7. estimatedTime: Number of hours as decimal (e.g., 2.5)
     8. dependencies: Array of task names (empty array if none)
