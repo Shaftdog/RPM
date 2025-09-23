@@ -450,22 +450,11 @@ export async function processAICommand(
 
 // Local fallback for image analysis when OpenAI is unavailable
 function analyzeImageLocally(base64Image: string): ExtractedTask[] {
-  console.log("Using local image analysis fallback - returning sample tasks");
+  console.log("Image analysis unavailable - OpenAI timeout or error");
   
-  // Return some basic sample tasks when image analysis fails
-  return [
-    {
-      name: "Review image content for actionable items",
-      type: "Task",
-      category: "Personal",
-      subcategory: "Mental",
-      timeHorizon: "Week",
-      priority: "Medium",
-      estimatedTime: 0.5,
-      dependencies: [],
-      why: "Image uploaded but requires manual review"
-    }
-  ];
+  // Return empty array when image analysis fails
+  // Better to show no tasks than misleading placeholder tasks
+  return [];
 }
 
 export async function analyzeImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<ExtractedTask[]> {
@@ -480,9 +469,9 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
     // Extract the image format from the MIME type (e.g., 'image/png' -> 'png')
     const imageFormat = mimeType.replace('image/', '');
     
-    // Create a timeout promise (10 seconds for image analysis)
+    // Create a timeout promise (30 seconds for image analysis - images need more time)
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('OpenAI image analysis timeout')), 10000);
+      setTimeout(() => reject(new Error('OpenAI image analysis timeout')), 30000);
     });
     
     // Race the OpenAI call against the timeout
