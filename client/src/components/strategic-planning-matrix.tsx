@@ -182,7 +182,7 @@ export default function StrategicPlanningMatrix() {
   });
 
   // Organize tasks by matrix structure
-  const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Quarter', 'Week', 'Today', 'BACKLOG'];
+  const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Month', 'Quarter', 'Week', 'Today', 'BACKLOG'];
   const categories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure', 'Marketing', 'Sales', 'Operations', 'Products', 'Production'];
 
   const matrix: Record<string, Record<string, Task[]>> = {};
@@ -898,8 +898,9 @@ export default function StrategicPlanningMatrix() {
                   <SelectContent>
                     <SelectItem value="Today">Today</SelectItem>
                     <SelectItem value="Week">This Week</SelectItem>
-                    <SelectItem value="Quarter">This Quarter</SelectItem>
                     <SelectItem value="1 Year">1 Year</SelectItem>
+                    <SelectItem value="Month">This Month</SelectItem>
+                    <SelectItem value="Quarter">This Quarter</SelectItem>
                     <SelectItem value="5 Year">5 Year</SelectItem>
                     <SelectItem value="10 Year">10 Year</SelectItem>
                     <SelectItem value="VISION">Vision</SelectItem>

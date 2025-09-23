@@ -458,8 +458,9 @@ export default function TaskCaptureInterface() {
                             <SelectContent>
                               <SelectItem value="Today">Today</SelectItem>
                               <SelectItem value="Week">Week</SelectItem>
-                              <SelectItem value="Quarter">Quarter</SelectItem>
                               <SelectItem value="1 Year">1 Year</SelectItem>
+                              <SelectItem value="Month">Month</SelectItem>
+                              <SelectItem value="Quarter">Quarter</SelectItem>
                               <SelectItem value="5 Year">5 Year</SelectItem>
                               <SelectItem value="10 Year">10 Year</SelectItem>
                             </SelectContent>

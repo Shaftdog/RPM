@@ -12,7 +12,7 @@ export interface ExtractedTask {
   type: "Milestone" | "Sub-Milestone" | "Task" | "Subtask";
   category: "Personal" | "Business";
   subcategory: "Physical" | "Mental" | "Relationship" | "Environmental" | "Financial" | "Adventure" | "Marketing" | "Sales" | "Operations" | "Products" | "Production";
-  timeHorizon: "10 Year" | "5 Year" | "1 Year" | "Quarter" | "Week" | "Today";
+  timeHorizon: "10 Year" | "5 Year" | "1 Year" | "Month" | "Quarter" | "Week" | "Today";
   priority: "High" | "Medium" | "Low";
   estimatedTime: number;
   why: string;
@@ -49,7 +49,7 @@ export async function extractTasksFromContent(content: string): Promise<Extracte
     4. subcategory: 
        - For Personal: "Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure"
        - For Business: "Marketing", "Sales", "Operations", "Products", "Production"
-    5. timeHorizon: One of: "10 Year", "5 Year", "1 Year", "Quarter", "Week", "Today"
+    5. timeHorizon: One of: "10 Year", "5 Year", "1 Year", "Month", "Quarter", "Week", "Today"
     6. priority: "High", "Medium", or "Low"
     7. estimatedTime: Number of hours as decimal (e.g., 2.5)
     8. dependencies: Array of task names (empty array if none)
