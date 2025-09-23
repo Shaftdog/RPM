@@ -93,7 +93,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (mimeType.startsWith('image/')) {
           const base64Image = fileBuffer.toString('base64');
-          const tasks = await analyzeImage(base64Image);
+          const tasks = await analyzeImage(base64Image, mimeType);
           return res.json({ tasks });
         } else if (mimeType === 'text/plain') {
           content = fileBuffer.toString('utf-8');

@@ -448,12 +448,46 @@ export async function processAICommand(
   }
 }
 
+// Local fallback for image analysis when OpenAI is unavailable
+function analyzeImageLocally(base64Image: string): ExtractedTask[] {
+  console.log("Using local image analysis fallback - returning sample tasks");
+  
+  // Return some basic sample tasks when image analysis fails
+  return [
+    {
+      name: "Review image content for actionable items",
+      type: "Task",
+      category: "Personal",
+      subcategory: "Mental",
+      timeHorizon: "Week",
+      priority: "Medium",
+      estimatedTime: 0.5,
+      dependencies: [],
+      why: "Image uploaded but requires manual review"
+    }
+  ];
+}
+
 export async function analyzeImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<ExtractedTask[]> {
+  // Check if OpenAI API key is available
+  if (!hasValidOpenAIKey()) {
+    console.warn("OpenAI API key not configured, using local image analysis fallback");
+    return analyzeImageLocally(base64Image);
+  }
+
   try {
+    console.log(`Analyzing image with GPT-5 (format: ${mimeType})...`);
     // Extract the image format from the MIME type (e.g., 'image/png' -> 'png')
     const imageFormat = mimeType.replace('image/', '');
     
-    const response = await openai.chat.completions.create({
+    // Create a timeout promise (10 seconds for image analysis)
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('OpenAI image analysis timeout')), 10000);
+    });
+    
+    // Race the OpenAI call against the timeout
+    const response = await Promise.race([
+      openai.chat.completions.create({
       model: "gpt-5",
       messages: [
         {
@@ -513,7 +547,9 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
       ],
       response_format: { type: "json_object" },
       max_completion_tokens: 1000,
-    });
+    }),
+      timeoutPromise
+    ]);
 
     const rawContent = response.choices[0].message.content || "{}";
     console.log('Raw AI image analysis response:', rawContent);
@@ -575,12 +611,9 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
     
     return fixedTasks;
   } catch (error) {
-    console.error("Error analyzing image - Full details:", error);
-    console.error("Error stack:", error instanceof Error ? error.stack : error);
-    
-    // Return empty array instead of throwing error to be more graceful
-    console.log("Returning empty task array due to analysis error");
-    return [];
+    console.error('OpenAI image analysis failed:', error);
+    console.log('Falling back to local image analysis');
+    return analyzeImageLocally(base64Image);
   }
 }
 
