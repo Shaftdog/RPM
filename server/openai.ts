@@ -4,7 +4,7 @@ import { TIME_BLOCKS } from "@shared/schema";
 // Using GPT-5, the newest OpenAI model released August 7, 2025
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key",
-  timeout: 15000, // 15 second timeout
+  timeout: 90000, // 90 second timeout for image analysis
 });
 
 export interface ExtractedTask {
@@ -469,9 +469,9 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
     // Extract the image format from the MIME type (e.g., 'image/png' -> 'png')
     const imageFormat = mimeType.replace('image/', '');
     
-    // Create a timeout promise (30 seconds for image analysis - images need more time)
+    // Create a timeout promise (60 seconds for image analysis - images need more time)
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('OpenAI image analysis timeout')), 30000);
+      setTimeout(() => reject(new Error('OpenAI image analysis timeout')), 60000);
     });
     
     // Race the OpenAI call against the timeout
