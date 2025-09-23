@@ -465,7 +465,7 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
   }
 
   try {
-    console.log(`Analyzing image with GPT-5 (format: ${mimeType})...`);
+    console.log(`Analyzing image with GPT-4o (format: ${mimeType})...`);
     // Extract the image format from the MIME type (e.g., 'image/png' -> 'png')
     const imageFormat = mimeType.replace('image/', '');
     
@@ -477,7 +477,7 @@ export async function analyzeImage(base64Image: string, mimeType: string = 'imag
     // Race the OpenAI call against the timeout
     const response = await Promise.race([
       openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "user",
