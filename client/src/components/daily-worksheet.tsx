@@ -1083,49 +1083,35 @@ export default function DailyWorksheet() {
         return;
       }
       
-      // Find existing location of the task for both metadata and source clearing
-      let existingEntry = schedule.find(e => 
-        (e.actualTaskId === taskId || e.plannedTaskId === taskId)
-      );
-      
-      // If not found by ID, check for recurring tasks and multiple tasks
-      if (!existingEntry) {
-        // Check for recurring tasks (synthetic ID format: recurring-${timeBlock}-${quartile})
-        if (taskId.startsWith('recurring-')) {
-          const [, findTimeBlock, findQuartile] = taskId.split('-');
-          existingEntry = schedule.find(e => 
-            e.timeBlock === findTimeBlock && 
-            e.quartile === parseInt(findQuartile) &&
-            e.reflection?.startsWith('RECURRING_TASK:')
-          );
-        }
-        // Check for multiple tasks (synthetic ID format: multiple-${timeBlock}-${quartile}-${index})
-        else if (taskId.startsWith('multiple-')) {
-          const [, findTimeBlock, findQuartile] = taskId.split('-');
-          existingEntry = schedule.find(e => 
-            e.timeBlock === findTimeBlock && 
-            e.quartile === parseInt(findQuartile) &&
-            e.reflection?.startsWith('MULTIPLE_TASKS:')
-          );
-        }
+      // Simple approach: For regular tasks, clear all entries with this task ID
+      if (!taskId.startsWith('recurring-') && !taskId.startsWith('multiple-')) {
+        // Find all entries that have this task ID and clear them
+        const entriesToClear = schedule.filter(e => 
+          (e.actualTaskId === taskId || e.plannedTaskId === taskId) &&
+          e.id &&
+          (e.timeBlock !== timeBlock || e.quartile !== quartile)
+        );
+        
+        // Clear each source entry
+        entriesToClear.forEach(entry => {
+          updateScheduleMutation.mutate({
+            id: entry.id!,
+            actualTaskId: null as any,
+            plannedTaskId: null as any,
+            status: 'not_started',
+          });
+        });
       }
       
       let originalTimeBlock = '';
-      if (timeBlock === BACKLOG_TIME_BLOCK && existingEntry && existingEntry.timeBlock !== BACKLOG_TIME_BLOCK) {
-        originalTimeBlock = existingEntry.timeBlock;
-      }
-      
-      // Clear the task from its original location if it's moving to a different spot
-      if (existingEntry && 
-          (existingEntry.timeBlock !== timeBlock || existingEntry.quartile !== quartile) && 
-          existingEntry.id) {
-        // Clear the source by removing the task ID, but keep the entry structure
-        updateScheduleMutation.mutate({
-          id: existingEntry.id!,
-          actualTaskId: null as any,
-          plannedTaskId: null as any,
-          status: 'not_started',
-        });
+      if (timeBlock === BACKLOG_TIME_BLOCK) {
+        // For backlog, find any existing location to preserve metadata
+        const existingEntry = schedule.find(e => 
+          (e.actualTaskId === taskId || e.plannedTaskId === taskId)
+        );
+        if (existingEntry && existingEntry.timeBlock !== BACKLOG_TIME_BLOCK) {
+          originalTimeBlock = existingEntry.timeBlock;
+        }
       }
       
       if (entry?.id) {
