@@ -275,6 +275,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (xDate) updates.xDate = new Date(xDate);
       
       const task = await storage.updateTask(taskId, req.user.id, updates);
+      
+      // If task is moved to BACKLOG, remove it from all daily schedules
+      if (newTimeHorizon === 'BACKLOG') {
+        try {
+          await storage.removeTaskFromAllDailySchedules(taskId, req.user.id);
+          console.log(`Removed task ${taskId} from all daily schedules due to BACKLOG move`);
+        } catch (error) {
+          console.error(`Failed to remove task ${taskId} from daily schedules:`, error);
+        }
+      }
+      
       res.json(task);
       
       // Broadcast to WebSocket clients

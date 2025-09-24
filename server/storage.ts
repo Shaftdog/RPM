@@ -25,7 +25,7 @@ import {
   type InsertTaskHierarchy,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, gte, lte, sql, inArray } from "drizzle-orm";
+import { eq, and, or, desc, asc, gte, lte, sql, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 
@@ -72,6 +72,7 @@ export interface IStorage {
   getDailySchedule(userId: string, date: Date): Promise<DailySchedule[]>;
   createDailyScheduleEntry(entry: InsertDailySchedule & { userId: string }): Promise<DailySchedule>;
   updateDailyScheduleEntry(id: string, userId: string, updates: Partial<InsertDailySchedule>): Promise<DailySchedule>;
+  removeTaskFromAllDailySchedules(taskId: string, userId: string): Promise<void>;
 
   // Task dependency operations
   getTaskDependencies(taskId: string): Promise<TaskDependency[]>;
@@ -404,6 +405,17 @@ export class DatabaseStorage implements IStorage {
       .values(entriesWithUserId)
       .returning();
     return newEntries;
+  }
+
+  async removeTaskFromAllDailySchedules(taskId: string, userId: string): Promise<void> {
+    await db.delete(dailySchedules)
+      .where(and(
+        eq(dailySchedules.userId, userId),
+        or(
+          eq(dailySchedules.plannedTaskId, taskId),
+          eq(dailySchedules.actualTaskId, taskId)
+        )
+      ));
   }
 
   // Task dependency operations
