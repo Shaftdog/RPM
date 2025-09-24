@@ -801,6 +801,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete('/api/daily/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Verify the entry exists and belongs to the user
+      const existingEntry = await storage.getDailyScheduleEntry(id, req.user.id);
+      if (!existingEntry) {
+        return res.status(404).json({ message: "Schedule entry not found" });
+      }
+      
+      await storage.deleteDailyScheduleEntry(id, req.user.id);
+      res.status(204).send();
+      
+      // Broadcast to WebSocket clients
+      broadcastToUser(req.user.id, { type: 'schedule_entry_deleted', data: { id } });
+    } catch (error) {
+      console.error("Error deleting daily schedule entry:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete schedule entry";
+      res.status(500).json({ message: errorMessage });
+    }
+  });
+
   // Manual add task to existing quarter (converts to MULTIPLE_TASKS format)
   app.post('/api/daily/add-to-quarter', isAuthenticated, async (req: any, res) => {
     try {

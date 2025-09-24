@@ -429,6 +429,14 @@ export class DatabaseStorage implements IStorage {
       ));
   }
 
+  async deleteDailyScheduleEntry(id: string, userId: string): Promise<void> {
+    await db.delete(dailySchedules)
+      .where(and(
+        eq(dailySchedules.id, id),
+        eq(dailySchedules.userId, userId)
+      ));
+  }
+
   // Task dependency operations
   async getTaskDependencies(taskId: string): Promise<TaskDependency[]> {
     return db.select().from(taskDependencies).where(eq(taskDependencies.taskId, taskId));
