@@ -1118,27 +1118,53 @@ export default function DailyWorksheet() {
         // Update existing entry
         const updateData: any = {
           id: entry.id,
-          actualTaskId: taskId,
           status: 'not_started',
         };
         
+        // Handle task IDs based on type
+        if (!taskId.startsWith('recurring-') && !taskId.startsWith('multiple-')) {
+          // For real tasks, set the task ID
+          updateData.actualTaskId = taskId;
+          updateData.plannedTaskId = taskId;
+        } else {
+          // For synthetic tasks, clear task IDs and store in reflection
+          updateData.actualTaskId = null;
+          updateData.plannedTaskId = null;
+          updateData.reflection = taskId.startsWith('recurring-') 
+            ? `RECURRING_TASK: ${taskName}`
+            : `MULTIPLE_TASKS: ${taskName}`;
+        }
+        
         // If moving to backlog, preserve original location
         if (timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock) {
-          updateData.reflection = `FROM:${originalTimeBlock}`;
+          updateData.reflection = (updateData.reflection || '') + ` FROM:${originalTimeBlock}`;
         }
         
         updateScheduleMutation.mutate(updateData);
       } else {
         // Create new entry
-        const response = await apiRequest("POST", "/api/daily", {
+        const createData: any = {
           timeBlock: timeBlock,
           quartile: quartile,
-          plannedTaskId: taskId,
-          actualTaskId: taskId,
           status: 'not_started',
           date: new Date(selectedDate + 'T00:00:00.000Z'),
           reflection: timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock ? `FROM:${originalTimeBlock}` : ''
-        });
+        };
+        
+        // Handle task IDs based on type
+        if (!taskId.startsWith('recurring-') && !taskId.startsWith('multiple-')) {
+          // For real tasks, set the task ID
+          createData.plannedTaskId = taskId;
+          createData.actualTaskId = taskId;
+        } else {
+          // For synthetic tasks, store in reflection only (no task IDs)
+          createData.reflection = (createData.reflection ? createData.reflection + ' ' : '') +
+            (taskId.startsWith('recurring-') 
+              ? `RECURRING_TASK: ${taskName}`
+              : `MULTIPLE_TASKS: ${taskName}`);
+        }
+        
+        const response = await apiRequest("POST", "/api/daily", createData);
         
         if (response.ok) {
           const responseData = await response.json();
