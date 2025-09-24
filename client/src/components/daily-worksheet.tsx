@@ -172,6 +172,32 @@ export default function DailyWorksheet() {
             localStorage.setItem('skippedRecurring', JSON.stringify(Array.from(newMap.get('global')!)));
             return newMap;
           });
+
+          // Also call backend API to create server-side skip
+          try {
+            // Find the recurring schedule for this recurring task
+            const matchingRecurring = recurringTasks.find(rt => 
+              rt.timeBlock === timeBlock && 
+              rt.quartiles?.includes(quartile) &&
+              (rt.taskName || rt.name) === task.name
+            );
+            
+            if (matchingRecurring?.id) {
+              // Call the skip API endpoint
+              apiRequest("POST", `/api/recurring/schedule/${matchingRecurring.id}/skip`, {
+                date: new Date(selectedDate + 'T00:00:00.000Z').toISOString()
+              }).then(() => {
+                console.log('Successfully created server-side skip for recurring task');
+                // Invalidate recurring tasks cache to reflect the skip
+                queryClient.invalidateQueries({ queryKey: ['/api/recurring-tasks'] });
+              }).catch(error => {
+                console.warn('Failed to create server-side skip:', error);
+                // Client-side skip still works, so don't show error to user
+              });
+            }
+          } catch (error) {
+            console.warn('Failed to create server-side skip:', error);
+          }
         }
       }
 

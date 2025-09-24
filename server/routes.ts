@@ -1176,6 +1176,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Skip recurring task for a specific date
+  app.post('/api/recurring/schedule/:id/skip', isAuthenticated, async (req: any, res) => {
+    try {
+      const skipData = z.object({
+        date: z.string().datetime()
+      }).parse(req.body);
+      
+      const skip = await storage.createTaskSkip({
+        recurringScheduleId: req.params.id,
+        skipDate: new Date(skipData.date)
+      }, req.user.id);
+      
+      res.status(201).json(skip);
+    } catch (error) {
+      console.error("Error creating task skip:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to create task skip";
+      res.status(400).json({ message: errorMessage });
+    }
+  });
+
   // Sync Recurring Tasks to Daily Schedule (Rebuild Mode)
   app.post('/api/recurring/sync-to-daily', isAuthenticated, async (req: any, res) => {
     try {
