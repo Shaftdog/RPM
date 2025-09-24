@@ -1104,19 +1104,42 @@ export default function DailyWorksheet() {
       return entry.actualTaskId === taskId || entry.plannedTaskId === taskId;
     } else if (taskId.startsWith('recurring-')) {
       // Single recurring tasks are stored as RECURRING_TASK:TaskName
-      // Match by checking if this entry contains a RECURRING_TASK with the same timeBlock/quartile
-      const parts = taskId.split('-');
-      if (parts.length >= 3) {
-        const timeBlock = parts[1];
-        const quartile = parseInt(parts[2]);
+      // The ID format is: recurring-TIMEBLOCK-QUARTILE
+      // Need to handle timeBlocks with underscores like PHYSICAL_MENTAL
+      const prefix = 'recurring-';
+      const withoutPrefix = taskId.substring(prefix.length);
+      const lastDashIndex = withoutPrefix.lastIndexOf('-');
+      
+      if (lastDashIndex > 0) {
+        const timeBlock = withoutPrefix.substring(0, lastDashIndex);
+        const quartile = parseInt(withoutPrefix.substring(lastDashIndex + 1));
+        
         return entry.timeBlock === timeBlock && 
                entry.quartile === quartile && 
                (entry.reflection || '').startsWith('RECURRING_TASK:');
       }
       return false;
     } else if (taskId.startsWith('multiple-')) {
-      // Multiple tasks use the KEY= format
-      return (entry.reflection || '').includes(`KEY=${buildKey(taskId)}`);
+      // Multiple tasks format: multiple-TIMEBLOCK-QUARTILE-INDEX
+      // Need similar parsing for multiple tasks
+      const prefix = 'multiple-';
+      const withoutPrefix = taskId.substring(prefix.length);
+      const lastDashIndex = withoutPrefix.lastIndexOf('-');
+      
+      if (lastDashIndex > 0) {
+        const beforeLastDash = withoutPrefix.substring(0, lastDashIndex);
+        const secondLastDashIndex = beforeLastDash.lastIndexOf('-');
+        
+        if (secondLastDashIndex > 0) {
+          const timeBlock = beforeLastDash.substring(0, secondLastDashIndex);
+          const quartile = parseInt(beforeLastDash.substring(secondLastDashIndex + 1));
+          
+          return entry.timeBlock === timeBlock && 
+                 entry.quartile === quartile && 
+                 (entry.reflection || '').startsWith('MULTIPLE_TASKS:');
+        }
+      }
+      return false;
     } else {
       return (entry.reflection || '').includes(`KEY=${buildKey(taskId)}`);
     }
@@ -1197,17 +1220,32 @@ export default function DailyWorksheet() {
       
       // Try to find the entry ID if not provided (fallback for production issues)
       let finalEntryId = entryId;
-      if (!finalEntryId && taskId && sourceTimeBlock && sourceQuartile !== undefined) {
+      if (!finalEntryId && sourceTimeBlock && sourceQuartile !== undefined) {
         console.log('No entryId provided, trying to find it from schedule');
+        
+        // First try: Direct match by timeBlock and quartile (most reliable for drag operations)
         const foundEntry = schedule.find((e: any) => 
-          matchesTask(e, taskId) &&
           e.timeBlock === sourceTimeBlock &&
           e.quartile === sourceQuartile
         );
+        
         if (foundEntry) {
           finalEntryId = foundEntry.id;
-          console.log('Found entry ID from schedule:', finalEntryId);
-        } else {
+          console.log('Found entry ID by timeBlock/quartile match:', finalEntryId);
+        } else if (taskId) {
+          // Second try: Use matchesTask if we have a taskId
+          const foundByTaskId = schedule.find((e: any) => 
+            matchesTask(e, taskId) &&
+            e.timeBlock === sourceTimeBlock &&
+            e.quartile === sourceQuartile
+          );
+          if (foundByTaskId) {
+            finalEntryId = foundByTaskId.id;
+            console.log('Found entry ID by task match:', finalEntryId);
+          }
+        }
+        
+        if (!finalEntryId) {
           console.log('Could not find matching entry in schedule for:', { taskId, sourceTimeBlock, sourceQuartile });
           console.log('Available schedule entries:', schedule.map(e => ({
             id: e.id,
