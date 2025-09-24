@@ -1071,16 +1071,52 @@ export default function DailyWorksheet() {
     }
   };
 
+  // Find existing task location across all dates
+  const findTaskLocationAcrossAllDates = async (taskId: string) => {
+    // First check current date schedule
+    const currentDateEntry = schedule.find((e: any) => matchesTask(e, taskId));
+    if (currentDateEntry) {
+      return { entry: currentDateEntry, date: selectedDate };
+    }
+    
+    // If not found in current date, check previous and next few days
+    const dates = [
+      new Date(Date.now() - 86400000).toISOString().split('T')[0], // yesterday
+      new Date(Date.now()).toISOString().split('T')[0], // today
+      new Date(Date.now() + 86400000).toISOString().split('T')[0], // tomorrow
+      new Date(Date.now() + 172800000).toISOString().split('T')[0], // day after tomorrow
+    ];
+    
+    for (const date of dates) {
+      if (date === selectedDate) continue; // already checked
+      try {
+        const response = await fetch(`/api/daily/${date}`);
+        if (response.ok) {
+          const otherSchedule = await response.json();
+          const foundEntry = otherSchedule.find((e: any) => matchesTask(e, taskId));
+          if (foundEntry) {
+            return { entry: foundEntry, date };
+          }
+        }
+      } catch (error) {
+        // Continue checking other dates
+      }
+    }
+    return null;
+  };
+
   // Handle task drop onto quartile
   const handleTaskDrop = async (taskId: string, timeBlock: string, quartile: number) => {
     const taskName = tasks.find(t => t.id === taskId)?.name || taskId;
     
     try {
-      // Find existing entry for this task anywhere in the schedule
-      const existingEntry = schedule.find((e: any) => matchesTask(e, taskId));
+      // Find existing entry for this task across all dates
+      const taskLocation = await findTaskLocationAcrossAllDates(taskId);
+      const existingEntry = taskLocation?.entry;
+      const existingDate = taskLocation?.date;
       
-      // Early return for duplicate assignment (same location)
-      if (existingEntry && existingEntry.timeBlock === timeBlock && existingEntry.quartile === quartile) {
+      // Early return for duplicate assignment (same location and date)
+      if (existingEntry && existingEntry.timeBlock === timeBlock && existingEntry.quartile === quartile && existingDate === selectedDate) {
         return;
       }
       
@@ -1107,12 +1143,13 @@ export default function DailyWorksheet() {
       }
       
       if (existingEntry) {
-        // MOVE: Update existing entry to new location
+        // MOVE: Update existing entry to new location and date
         const updateData: any = {
           id: existingEntry.id!,
           timeBlock: timeBlock,
           quartile: quartile,
           status: 'not_started',
+          date: new Date(selectedDate + 'T00:00:00.000Z'), // Update date to current selected date
         };
         
         // Build reflection with stable key
@@ -1122,6 +1159,10 @@ export default function DailyWorksheet() {
         }
         if (timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock) {
           reflection += ` FROM:${originalTimeBlock}`;
+        }
+        // Add move info if moving between dates
+        if (existingDate && existingDate !== selectedDate) {
+          reflection += ` MOVED_FROM:${existingDate}`;
         }
         updateData.reflection = reflection;
         
