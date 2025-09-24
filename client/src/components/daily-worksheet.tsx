@@ -1466,7 +1466,8 @@ export default function DailyWorksheet() {
                             <p className="text-xs text-muted-foreground mb-3">
                               {backlogTasks.length} task{backlogTasks.length !== 1 ? 's' : ''} in backlog
                             </p>
-                            <ScrollArea className="max-h-[300px]">
+                            <ScrollArea className="h-[400px] w-full pr-4">
+                              <div className="space-y-2">
                               {backlogTasks.map((task) => (
                                 <DraggableTask key={task.id} task={{ id: task.taskId || task.id, name: task.name }}>
                                   <div
@@ -1503,16 +1504,20 @@ export default function DailyWorksheet() {
                                       size="sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleDeleteBacklogTask(task.entryId, task.name);
+                                        if (task.entryId) {
+                                          handleDeleteBacklogTask(task.entryId, task.name);
+                                        }
                                       }}
                                       className="text-muted-foreground hover:text-destructive h-8 w-8 p-0"
                                       data-testid={`button-delete-backlog-task-${task.id}`}
+                                      disabled={!task.entryId}
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
                                   </div>
                                 </DraggableTask>
                               ))}
+                              </div>
                             </ScrollArea>
                           </div>
                         );
