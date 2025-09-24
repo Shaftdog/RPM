@@ -1064,6 +1064,7 @@ export default function DailyWorksheet() {
   const handleTaskDrop = async (taskId: string, timeBlock: string, quartile: number) => {
     
     try {
+      
       const entry = getScheduleEntry(timeBlock, quartile);
       
       // Check if destination quartile is occupied (except when moving to backlog)
@@ -1083,9 +1084,31 @@ export default function DailyWorksheet() {
       }
       
       // Find existing location of the task for both metadata and source clearing
-      const existingEntry = schedule.find(e => 
+      let existingEntry = schedule.find(e => 
         (e.actualTaskId === taskId || e.plannedTaskId === taskId)
       );
+      
+      // If not found by ID, check for recurring tasks and multiple tasks
+      if (!existingEntry) {
+        // Check for recurring tasks (synthetic ID format: recurring-${timeBlock}-${quartile})
+        if (taskId.startsWith('recurring-')) {
+          const [, findTimeBlock, findQuartile] = taskId.split('-');
+          existingEntry = schedule.find(e => 
+            e.timeBlock === findTimeBlock && 
+            e.quartile === parseInt(findQuartile) &&
+            e.reflection?.startsWith('RECURRING_TASK:')
+          );
+        }
+        // Check for multiple tasks (synthetic ID format: multiple-${timeBlock}-${quartile}-${index})
+        else if (taskId.startsWith('multiple-')) {
+          const [, findTimeBlock, findQuartile] = taskId.split('-');
+          existingEntry = schedule.find(e => 
+            e.timeBlock === findTimeBlock && 
+            e.quartile === parseInt(findQuartile) &&
+            e.reflection?.startsWith('MULTIPLE_TASKS:')
+          );
+        }
+      }
       
       let originalTimeBlock = '';
       if (timeBlock === BACKLOG_TIME_BLOCK && existingEntry && existingEntry.timeBlock !== BACKLOG_TIME_BLOCK) {
@@ -1096,18 +1119,12 @@ export default function DailyWorksheet() {
       if (existingEntry && 
           (existingEntry.timeBlock !== timeBlock || existingEntry.quartile !== quartile) && 
           existingEntry.id) {
-        
         // Clear the source by removing the task ID, but keep the entry structure
-        await new Promise<void>((resolve, reject) => {
-          updateScheduleMutation.mutate({
-            id: existingEntry.id!,
-            actualTaskId: null as any,
-            plannedTaskId: null as any,
-            status: 'not_started',
-          }, {
-            onSuccess: () => resolve(),
-            onError: (error) => reject(error)
-          });
+        updateScheduleMutation.mutate({
+          id: existingEntry.id!,
+          actualTaskId: null as any,
+          plannedTaskId: null as any,
+          status: 'not_started',
         });
       }
       
@@ -1124,12 +1141,7 @@ export default function DailyWorksheet() {
           updateData.reflection = `FROM:${originalTimeBlock}`;
         }
         
-        await new Promise<void>((resolve, reject) => {
-          updateScheduleMutation.mutate(updateData, {
-            onSuccess: () => resolve(),
-            onError: (error) => reject(error)
-          });
-        });
+        updateScheduleMutation.mutate(updateData);
       } else {
         // Create new entry
         const response = await apiRequest("POST", "/api/daily", {
