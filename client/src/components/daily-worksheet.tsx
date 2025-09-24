@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target, Info, Trash2, CalendarDays, Clock, User } from "lucide-react";
+import { isToday } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -851,20 +852,18 @@ export default function DailyWorksheet() {
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm text-muted-foreground">
-                      Today's scheduled tasks and activities for {(() => {
-                        const [year, month, day] = selectedDate.split('-');
-                        const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                        return localDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-                      })()}
+                      Tasks planned for today from your strategic planning matrix
                     </p>
                   </div>
                   <div className="relative h-40">
                     <ScrollArea className="h-full">
                       <div className="space-y-2 pr-4">
                         {tasks.filter(task => {
-                          const taskDate = new Date(task.dueDate || task.createdAt).toISOString().split('T')[0];
+                          // Use same criteria as Planning page: timeHorizon = "Today" AND xDate is today
+                          const hasTimeHorizonToday = task.timeHorizon === 'Today';
+                          const hasWorkDateToday = task.xDate && isToday(new Date(task.xDate));
                           // Only show actionable tasks, not milestones/outcomes
-                          return taskDate === selectedDate && task.type !== 'Milestone' && task.type !== 'Sub-Milestone';
+                          return hasTimeHorizonToday && hasWorkDateToday && task.type !== 'Milestone' && task.type !== 'Sub-Milestone';
                         }).length === 0 ? (
                           <div className="text-center py-8 text-muted-foreground">
                             <CalendarDays className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -873,9 +872,11 @@ export default function DailyWorksheet() {
                           </div>
                         ) : (
                           tasks.filter(task => {
-                            const taskDate = new Date(task.dueDate || task.createdAt).toISOString().split('T')[0];
+                            // Use same criteria as Planning page: timeHorizon = "Today" AND xDate is today
+                            const hasTimeHorizonToday = task.timeHorizon === 'Today';
+                            const hasWorkDateToday = task.xDate && isToday(new Date(task.xDate));
                             // Only show actionable tasks, not milestones/outcomes
-                            return taskDate === selectedDate && task.type !== 'Milestone' && task.type !== 'Sub-Milestone';
+                            return hasTimeHorizonToday && hasWorkDateToday && task.type !== 'Milestone' && task.type !== 'Sub-Milestone';
                           }).map((task) => (
                             <div
                               key={task.id}
