@@ -959,7 +959,7 @@ export default function DailyWorksheet() {
         {!isPanelCollapsed && (
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="today-tasks" data-testid="tab-today-tasks">
                   <CalendarDays className="h-4 w-4 mr-2" />
                   Today's Tasks
@@ -967,6 +967,10 @@ export default function DailyWorksheet() {
                 <TabsTrigger value="today-outcomes" data-testid="tab-today-outcomes">
                   <Target className="h-4 w-4 mr-2" />
                   Today's Outcomes
+                </TabsTrigger>
+                <TabsTrigger value="today-backlog" data-testid="tab-today-backlog">
+                  <Clock className="h-4 w-4 mr-2" />
+                  Today's Backlog
                 </TabsTrigger>
               </TabsList>
               
@@ -1100,6 +1104,24 @@ export default function DailyWorksheet() {
                         )}
                       </div>
                     </ScrollArea>
+                  </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="today-backlog" className="mt-4">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Tasks moved to backlog that you still want to complete today
+                    </p>
+                  </div>
+                  <div className="border rounded-lg p-4 min-h-[200px] bg-muted/20">
+                    <p className="text-sm text-muted-foreground text-center">
+                      Drag incomplete tasks here to reschedule them later
+                    </p>
+                    <p className="text-xs text-muted-foreground text-center mt-2">
+                      Tasks in backlog can be dragged back to any available quartile
+                    </p>
                   </div>
                 </div>
               </TabsContent>
