@@ -336,18 +336,36 @@ export const insertTaskSkipSchema = createInsertSchema(taskSkips).omit({
   createdAt: true,
 });
 
-export const insertDailyScheduleSchema = createInsertSchema(dailySchedules).omit({
+// Base schema without validation for internal use
+const baseDailyScheduleSchema = createInsertSchema(dailySchedules).omit({
   id: true,
   userId: true,
   createdAt: true,
   updatedAt: true,
-}).refine((data) => {
+});
+
+// Full validation schema for creates
+export const insertDailyScheduleSchema = baseDailyScheduleSchema.refine((data) => {
   // Allow quartile 0 only for BACKLOG timeBlock
   if (data.timeBlock === BACKLOG_TIME_BLOCK) {
     return data.quartile === 0;
   }
   // For regular time blocks, quartile must be 1-4
   return data.quartile >= 1 && data.quartile <= 4;
+}, {
+  message: "Quartile must be 0 for BACKLOG timeBlock, or 1-4 for regular time blocks"
+});
+
+// Partial update schema for updates - applies same validation to provided fields
+export const updateDailyScheduleSchema = baseDailyScheduleSchema.partial().refine((data) => {
+  // Only validate if both timeBlock and quartile are provided
+  if (data.timeBlock !== undefined && data.quartile !== undefined) {
+    if (data.timeBlock === BACKLOG_TIME_BLOCK) {
+      return data.quartile === 0;
+    }
+    return data.quartile >= 1 && data.quartile <= 4;
+  }
+  return true;
 }, {
   message: "Quartile must be 0 for BACKLOG timeBlock, or 1-4 for regular time blocks"
 });

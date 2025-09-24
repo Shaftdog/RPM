@@ -70,6 +70,7 @@ export interface IStorage {
 
   // Daily schedule operations
   getDailySchedule(userId: string, date: Date): Promise<DailySchedule[]>;
+  getDailyScheduleEntry(id: string, userId: string): Promise<DailySchedule | undefined>;
   createDailyScheduleEntry(entry: InsertDailySchedule & { userId: string }): Promise<DailySchedule>;
   updateDailyScheduleEntry(id: string, userId: string, updates: Partial<InsertDailySchedule>): Promise<DailySchedule>;
   removeTaskFromAllDailySchedules(taskId: string, userId: string): Promise<void>;
@@ -167,7 +168,7 @@ export class DatabaseStorage implements IStorage {
   async createTask(task: InsertTask & { userId: string }): Promise<Task> {
     const [newTask] = await db
       .insert(tasks)
-      .values({ ...task, updatedAt: new Date() })
+      .values(task)
       .returning();
     return newTask;
   }
@@ -175,7 +176,7 @@ export class DatabaseStorage implements IStorage {
   async updateTask(id: string, userId: string, updates: Partial<InsertTask>): Promise<Task> {
     const [updatedTask] = await db
       .update(tasks)
-      .set({ ...updates, updatedAt: new Date() })
+      .set(updates)
       .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
       .returning();
     return updatedTask;
@@ -359,6 +360,16 @@ export class DatabaseStorage implements IStorage {
         lte(dailySchedules.date, endOfDay)
       ))
       .orderBy(asc(dailySchedules.timeBlock), asc(dailySchedules.quartile));
+  }
+
+  async getDailyScheduleEntry(id: string, userId: string): Promise<DailySchedule | undefined> {
+    const [entry] = await db.select()
+      .from(dailySchedules)
+      .where(and(
+        eq(dailySchedules.id, id),
+        eq(dailySchedules.userId, userId)
+      ));
+    return entry;
   }
 
   async createDailyScheduleEntry(entry: InsertDailySchedule & { userId: string }): Promise<DailySchedule> {

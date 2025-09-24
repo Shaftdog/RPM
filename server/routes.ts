@@ -10,6 +10,8 @@ import {
   insertRecurringScheduleSchema,
   insertTaskSkipSchema,
   insertDailyScheduleSchema,
+  updateDailyScheduleSchema,
+  BACKLOG_TIME_BLOCK,
   TIME_BLOCKS 
 } from "@shared/schema";
 import multer from "multer";
@@ -763,12 +765,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/daily/update', isAuthenticated, async (req: any, res) => {
     try {
       const { id, ...updates } = req.body;
-      const scheduleData = insertDailyScheduleSchema.partial().parse(updates);
+      
+      // Fetch existing entry to validate cross-field consistency
+      const existingEntry = await storage.getDailyScheduleEntry(id, req.user.id);
+      if (!existingEntry) {
+        return res.status(404).json({ message: "Schedule entry not found" });
+      }
+      
+      // Merge updates with existing data
+      const mergedData = {
+        date: existingEntry.date,
+        timeBlock: existingEntry.timeBlock,
+        quartile: existingEntry.quartile,
+        plannedTaskId: existingEntry.plannedTaskId,
+        actualTaskId: existingEntry.actualTaskId,
+        status: existingEntry.status,
+        energyImpact: existingEntry.energyImpact,
+        reflection: existingEntry.reflection,
+        startTime: existingEntry.startTime,
+        endTime: existingEntry.endTime,
+        ...updates
+      };
+      
+      // Validate the merged data using full schema validation
+      const scheduleData = insertDailyScheduleSchema.parse(mergedData);
       const entry = await storage.updateDailyScheduleEntry(id, req.user.id, scheduleData);
       res.json(entry);
       
-      // Broadcast to WebSocket clients
-      broadcastToUser(req.user.id, { type: 'schedule_updated', data: entry });
+      // Broadcast to WebSocket clients for real-time sync
+      broadcastToUser(req.user.id, { type: 'daily_schedule_updated', data: entry });
     } catch (error) {
       console.error("Error updating daily schedule:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to update schedule";
