@@ -1102,6 +1102,21 @@ export default function DailyWorksheet() {
   const matchesTask = (entry: any, taskId: string) => {
     if (!isSynthetic(taskId)) {
       return entry.actualTaskId === taskId || entry.plannedTaskId === taskId;
+    } else if (taskId.startsWith('recurring-')) {
+      // Single recurring tasks are stored as RECURRING_TASK:TaskName
+      // Match by checking if this entry contains a RECURRING_TASK with the same timeBlock/quartile
+      const parts = taskId.split('-');
+      if (parts.length >= 3) {
+        const timeBlock = parts[1];
+        const quartile = parseInt(parts[2]);
+        return entry.timeBlock === timeBlock && 
+               entry.quartile === quartile && 
+               (entry.reflection || '').startsWith('RECURRING_TASK:');
+      }
+      return false;
+    } else if (taskId.startsWith('multiple-')) {
+      // Multiple tasks use the KEY= format
+      return (entry.reflection || '').includes(`KEY=${buildKey(taskId)}`);
     } else {
       return (entry.reflection || '').includes(`KEY=${buildKey(taskId)}`);
     }
