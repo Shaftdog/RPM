@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { TIME_BLOCKS as CANONICAL_TIME_BLOCKS } from "@shared/schema";
+import { TIME_BLOCKS as CANONICAL_TIME_BLOCKS, BACKLOG_TIME_BLOCK } from "@shared/schema";
 
 // Convert canonical TIME_BLOCKS to frontend format with time display and quartiles
 const TIME_BLOCKS = CANONICAL_TIME_BLOCKS.map(block => ({
@@ -85,6 +85,40 @@ function QuartileDropZone({
         border: isOver ? '2px dashed rgba(59, 130, 246, 0.5)' : '2px dashed transparent',
         transition: 'all 0.2s ease',
       }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Drop zone component for backlog
+function BacklogDropZone({ 
+  children, 
+  onDrop 
+}: { 
+  children: React.ReactNode; 
+  onDrop: (taskId: string, timeBlock: string, quartile: number) => void;
+}) {
+  const [{ isOver }, drop] = useDrop(() => ({
+    accept: ItemTypes.TASK,
+    drop: (item: { taskId: string; taskName: string }) => {
+      onDrop(item.taskId, BACKLOG_TIME_BLOCK, 0);
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+    }),
+  }));
+
+  return (
+    <div
+      ref={drop}
+      style={{
+        backgroundColor: isOver ? 'rgba(234, 179, 8, 0.1)' : 'transparent',
+        border: isOver ? '2px dashed rgba(234, 179, 8, 0.5)' : '2px dashed transparent',
+        borderRadius: '8px',
+        transition: 'all 0.2s ease',
+      }}
+      data-testid="dropzone-backlog"
     >
       {children}
     </div>
@@ -859,6 +893,54 @@ export default function DailyWorksheet() {
     return candidates;
   };
 
+  // Helper to get backlog tasks (tasks moved to BACKLOG_TIME_BLOCK with quartile 0)
+  const getBacklogTasks = () => {
+    const backlogEntries = schedule.filter(entry => 
+      entry.timeBlock === BACKLOG_TIME_BLOCK && 
+      entry.quartile === 0 &&
+      !entry.reflection?.startsWith('PLACEHOLDER:') &&
+      entry.status !== 'completed'
+    );
+
+    const backlogTasks = backlogEntries.map(entry => {
+      let task = null;
+      let taskName = '';
+      let originalTimeBlock = 'Unknown';
+
+      // Try to find the actual task data
+      if (entry.actualTaskId) {
+        task = tasks.find(t => t.id === entry.actualTaskId);
+        taskName = task?.name || `Task ${entry.actualTaskId.slice(0, 8)}...`;
+      } else if (entry.plannedTaskId) {
+        task = tasks.find(t => t.id === entry.plannedTaskId);
+        taskName = task?.name || `Task ${entry.plannedTaskId.slice(0, 8)}...`;
+      } else if (entry.reflection?.startsWith('RECURRING_TASK:')) {
+        taskName = entry.reflection.replace('RECURRING_TASK:', '');
+      }
+
+      // Extract original time block from reflection if available
+      if (entry.reflection?.includes('FROM:')) {
+        const match = entry.reflection.match(/FROM:([^|]+)/);
+        if (match) originalTimeBlock = match[1].trim();
+      }
+
+      return {
+        id: entry.id || `${selectedDate}:backlog:${entry.actualTaskId || entry.plannedTaskId || taskName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)}`,
+        entryId: entry.id,
+        taskId: entry.actualTaskId || entry.plannedTaskId,
+        name: taskName,
+        originalTimeBlock,
+        priority: task?.priority || 'Medium',
+        category: task?.category || 'Personal',
+        subcategory: task?.subcategory || '',
+        status: entry.status,
+        reflection: entry.reflection
+      };
+    }).filter(item => item.name); // Only include items with valid names
+
+    return backlogTasks;
+  };
+
   const getCompletedTasks = () => {
     return schedule.filter((entry) => entry.status === 'completed').length;
   };
@@ -884,13 +966,32 @@ export default function DailyWorksheet() {
     try {
       const entry = getScheduleEntry(timeBlock, quartile);
       
+      // Find existing location of the task to preserve original time block
+      let originalTimeBlock = '';
+      if (timeBlock === BACKLOG_TIME_BLOCK) {
+        const existingEntry = schedule.find(e => 
+          (e.actualTaskId === taskId || e.plannedTaskId === taskId) && 
+          e.timeBlock !== BACKLOG_TIME_BLOCK
+        );
+        if (existingEntry) {
+          originalTimeBlock = existingEntry.timeBlock;
+        }
+      }
+      
       if (entry?.id) {
         // Update existing entry
-        updateScheduleMutation.mutate({
+        const updateData: any = {
           id: entry.id,
           actualTaskId: taskId,
           status: 'not_started',
-        });
+        };
+        
+        // If moving to backlog, preserve original location
+        if (timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock) {
+          updateData.reflection = `FROM:${originalTimeBlock}`;
+        }
+        
+        updateScheduleMutation.mutate(updateData);
       } else {
         // Create new entry
         const response = await apiRequest("POST", "/api/daily", {
@@ -899,7 +1000,8 @@ export default function DailyWorksheet() {
           plannedTaskId: taskId,
           actualTaskId: taskId,
           status: 'not_started',
-          date: new Date(selectedDate + 'T00:00:00.000Z')
+          date: new Date(selectedDate + 'T00:00:00.000Z'),
+          reflection: timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock ? `FROM:${originalTimeBlock}` : ''
         });
         
         if (response.ok) {
@@ -1115,14 +1217,70 @@ export default function DailyWorksheet() {
                       Tasks moved to backlog that you still want to complete today
                     </p>
                   </div>
-                  <div className="border rounded-lg p-4 min-h-[200px] bg-muted/20">
-                    <p className="text-sm text-muted-foreground text-center">
-                      Drag incomplete tasks here to reschedule them later
-                    </p>
-                    <p className="text-xs text-muted-foreground text-center mt-2">
-                      Tasks in backlog can be dragged back to any available quartile
-                    </p>
-                  </div>
+                  <BacklogDropZone onDrop={handleTaskDrop}>
+                    <div className="border rounded-lg p-4 min-h-[200px] bg-muted/20">
+                      {(() => {
+                        const backlogTasks = getBacklogTasks();
+                        
+                        if (backlogTasks.length === 0) {
+                          return (
+                            <div className="text-center py-8">
+                              <p className="text-sm text-muted-foreground">
+                                Drag incomplete tasks here to reschedule them later
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Tasks in backlog can be dragged back to any available quartile
+                              </p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-3">
+                            <p className="text-xs text-muted-foreground mb-3">
+                              {backlogTasks.length} task{backlogTasks.length !== 1 ? 's' : ''} in backlog
+                            </p>
+                            <ScrollArea className="max-h-[300px]">
+                              {backlogTasks.map((task) => (
+                                <DraggableTask key={task.id} task={{ id: task.taskId || task.id, name: task.name }}>
+                                  <div
+                                    className="flex items-center gap-3 p-3 mb-2 rounded-lg border bg-card hover:bg-card/80 transition-colors"
+                                    data-testid={`row-backlog-task-${task.id}`}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <h4 className="font-medium text-sm truncate" data-testid={`text-backlog-task-name-${task.id}`}>
+                                          {task.name}
+                                        </h4>
+                                        <Badge variant="outline" className="text-xs" data-testid={`badge-task-priority-${task.id}`}>
+                                          {task.priority}
+                                        </Badge>
+                                        <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-800" data-testid={`badge-original-timeblock-${task.id}`}>
+                                          From: {task.originalTimeBlock}
+                                        </Badge>
+                                      </div>
+                                      {task.category && (
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant="secondary" className="text-xs" data-testid={`badge-task-category-${task.id}`}>
+                                            {task.category}
+                                          </Badge>
+                                          {task.subcategory && (
+                                            <Badge variant="secondary" className="text-xs" data-testid={`badge-task-subcategory-${task.id}`}>
+                                              {task.subcategory}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </DraggableTask>
+                              ))}
+                            </ScrollArea>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </BacklogDropZone>
                 </div>
               </TabsContent>
             </Tabs>
