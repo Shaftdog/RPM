@@ -9,10 +9,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target, Info, Trash2 } from "lucide-react";
+import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target, Info, Trash2, CalendarDays, Clock, User } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { TIME_BLOCKS as CANONICAL_TIME_BLOCKS } from "@shared/schema";
 
 // Convert canonical TIME_BLOCKS to frontend format with time display and quartiles
@@ -43,13 +45,7 @@ export default function DailyWorksheet() {
   const baseExpenditure = -2300; // Base Metabolic Rate (constant)
   const [quickTask, setQuickTask] = useState("");
   const [aiMessage, setAiMessage] = useState("");
-  const [isOutcomesCollapsed, setIsOutcomesCollapsed] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('daily-outcomes-collapsed') || 'false');
-    } catch {
-      return false;
-    }
-  });
+  // Remove legacy outcomes collapse state (replaced by panel-level collapse)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   
@@ -66,6 +62,22 @@ export default function DailyWorksheet() {
     isPlanned: boolean;
   } | null>(null);
   const [skipRecurringToday, setSkipRecurringToday] = useState(true);
+  
+  // Top panel state
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('daily-panel-collapsed') || 'false');
+    } catch {
+      return false;
+    }
+  });
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('daily-panel-active-tab') || 'today-tasks';
+    } catch {
+      return 'today-tasks';
+    }
+  });
   
   // Client-side skip registry for recurring tasks (per-date)
   const [skippedRecurring, setSkippedRecurring] = useState<Map<string, Set<string>>>(() => {
@@ -342,10 +354,15 @@ export default function DailyWorksheet() {
   });
 
 
-  // Persist outcomes panel collapse state
+  // Persist top panel collapse state
   useEffect(() => {
-    localStorage.setItem('daily-outcomes-collapsed', JSON.stringify(isOutcomesCollapsed));
-  }, [isOutcomesCollapsed]);
+    localStorage.setItem('daily-panel-collapsed', JSON.stringify(isPanelCollapsed));
+  }, [isPanelCollapsed]);
+  
+  // Persist active tab state
+  useEffect(() => {
+    localStorage.setItem('daily-panel-active-tab', activeTab);
+  }, [activeTab]);
 
   // Calculate total calories from completed tasks
   const calculatedCaloricIntake = completedTasks.reduce((total, task) => {
@@ -796,73 +813,160 @@ export default function DailyWorksheet() {
 
   return (
     <div className="space-y-6">
-      {/* Today's Outcomes */}
-      <Card>
+      {/* Daily Overview Panel */}
+      <Card className="sticky top-0 z-40 mb-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Target className="h-5 w-5" />
-              <CardTitle className="text-lg">Today's Outcomes</CardTitle>
-              {outcomesToday.length > 0 && (
-                <Badge variant="secondary" className="text-xs" data-testid="badge-outcomes-count">
-                  {outcomesToday.length}
-                </Badge>
-              )}
+              <h2 className="font-semibold text-lg">Daily Overview</h2>
+              <Badge variant="secondary" className="text-xs">
+                {isPanelCollapsed ? 'Collapsed' : 'Expanded'}
+              </Badge>
             </div>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setIsOutcomesCollapsed(!isOutcomesCollapsed)}
-              aria-expanded={!isOutcomesCollapsed}
-              data-testid="button-toggle-outcomes"
+              onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+              data-testid="toggle-daily-panel-collapse"
             >
-              {isOutcomesCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+              {isPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </Button>
           </div>
         </CardHeader>
-        {!isOutcomesCollapsed && (
-          <CardContent className="pt-0">
-            {outcomesToday.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground" data-testid="status-no-outcomes">
-                <Target className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No outcomes due today</p>
-                <p className="text-xs">Milestones and deliverables will appear here</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {outcomesToday.map((outcome) => (
-                  <div
-                    key={outcome.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border bg-card/50"
-                    data-testid={`row-outcome-${outcome.id}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-medium text-sm truncate" data-testid={`text-outcome-name-${outcome.id}`}>{outcome.name}</h4>
-                        <Badge variant="outline" className="text-xs" data-testid={`badge-outcome-type-${outcome.id}`}>
-                          {outcome.type}
-                        </Badge>
-                        {outcome.category && (
-                          <Badge variant="secondary" className="text-xs" data-testid={`badge-outcome-category-${outcome.id}`}>
-                            {outcome.category}
-                          </Badge>
-                        )}
-                        {outcome.subcategory && (
-                          <Badge variant="secondary" className="text-xs" data-testid={`badge-outcome-subcategory-${outcome.id}`}>
-                            {outcome.subcategory}
-                          </Badge>
+        {!isPanelCollapsed && (
+          <CardContent>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="today-tasks" data-testid="tab-today-tasks">
+                  <CalendarDays className="h-4 w-4 mr-2" />
+                  Today's Tasks
+                </TabsTrigger>
+                <TabsTrigger value="today-outcomes" data-testid="tab-today-outcomes">
+                  <Target className="h-4 w-4 mr-2" />
+                  Today's Outcomes
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="today-tasks" className="mt-4">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Today's scheduled tasks and activities for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    </p>
+                  </div>
+                  <div className="relative h-40">
+                    <ScrollArea className="h-full">
+                      <div className="space-y-2 pr-4">
+                        {tasks.filter(task => {
+                          const taskDate = new Date(task.dueDate || task.createdAt).toISOString().split('T')[0];
+                          // Only show actionable tasks, not milestones/outcomes
+                          return taskDate === selectedDate && task.type !== 'Milestone' && task.type !== 'Sub-Milestone';
+                        }).length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <CalendarDays className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No tasks scheduled for today</p>
+                            <p className="text-xs">Tasks will appear here when scheduled</p>
+                          </div>
+                        ) : (
+                          tasks.filter(task => {
+                            const taskDate = new Date(task.dueDate || task.createdAt).toISOString().split('T')[0];
+                            // Only show actionable tasks, not milestones/outcomes
+                            return taskDate === selectedDate && task.type !== 'Milestone' && task.type !== 'Sub-Milestone';
+                          }).map((task) => (
+                            <div
+                              key={task.id}
+                              className="flex items-center gap-3 p-3 rounded-lg border bg-card/50 hover:bg-card/80 transition-colors"
+                              data-testid={`row-today-task-${task.id}`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-medium text-sm truncate" data-testid={`text-task-name-${task.id}`}>{task.name}</h4>
+                                  <Badge variant="outline" className="text-xs" data-testid={`badge-task-priority-${task.id}`}>
+                                    {task.priority}
+                                  </Badge>
+                                  {task.category && (
+                                    <Badge variant="secondary" className="text-xs" data-testid={`badge-task-category-${task.id}`}>
+                                      {task.category}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    <span>{task.estimatedTime}h</span>
+                                  </div>
+                                  {task.dueDate && (
+                                    <div className="flex items-center gap-1">
+                                      <CalendarDays className="h-3 w-3" />
+                                      <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))
                         )}
                       </div>
-                      {outcome.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-2">
-                          {outcome.description}
-                        </p>
-                      )}
-                    </div>
+                    </ScrollArea>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="today-outcomes" className="mt-4">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Milestones and deliverables due today
+                    </p>
+                  </div>
+                  <div className="relative h-40">
+                    <ScrollArea className="h-full">
+                      <div className="space-y-2 pr-4">
+                        {outcomesToday.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground" data-testid="status-no-outcomes">
+                            <Target className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No outcomes due today</p>
+                            <p className="text-xs">Milestones and deliverables will appear here</p>
+                          </div>
+                        ) : (
+                          outcomesToday.map((outcome) => (
+                            <div
+                              key={outcome.id}
+                              className="flex items-start gap-3 p-3 rounded-lg border bg-card/50 hover:bg-card/80 transition-colors"
+                              data-testid={`row-outcome-${outcome.id}`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-medium text-sm truncate" data-testid={`text-outcome-name-${outcome.id}`}>{outcome.name}</h4>
+                                  <Badge variant="outline" className="text-xs" data-testid={`badge-outcome-type-${outcome.id}`}>
+                                    {outcome.type}
+                                  </Badge>
+                                  {outcome.category && (
+                                    <Badge variant="secondary" className="text-xs" data-testid={`badge-outcome-category-${outcome.id}`}>
+                                      {outcome.category}
+                                    </Badge>
+                                  )}
+                                  {outcome.subcategory && (
+                                    <Badge variant="secondary" className="text-xs" data-testid={`badge-outcome-subcategory-${outcome.id}`}>
+                                      {outcome.subcategory}
+                                    </Badge>
+                                  )}
+                                </div>
+                                {outcome.description && (
+                                  <p className="text-xs text-muted-foreground line-clamp-2">
+                                    {outcome.description}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         )}
       </Card>
