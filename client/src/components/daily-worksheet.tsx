@@ -1098,11 +1098,16 @@ export default function DailyWorksheet() {
           existingEntry.id) {
         
         // Clear the source by removing the task ID, but keep the entry structure
-        updateScheduleMutation.mutate({
-          id: existingEntry.id,
-          actualTaskId: null as any,
-          plannedTaskId: null as any,
-          status: 'not_started',
+        await new Promise<void>((resolve, reject) => {
+          updateScheduleMutation.mutate({
+            id: existingEntry.id!,
+            actualTaskId: null as any,
+            plannedTaskId: null as any,
+            status: 'not_started',
+          }, {
+            onSuccess: () => resolve(),
+            onError: (error) => reject(error)
+          });
         });
       }
       
@@ -1119,7 +1124,12 @@ export default function DailyWorksheet() {
           updateData.reflection = `FROM:${originalTimeBlock}`;
         }
         
-        updateScheduleMutation.mutate(updateData);
+        await new Promise<void>((resolve, reject) => {
+          updateScheduleMutation.mutate(updateData, {
+            onSuccess: () => resolve(),
+            onError: (error) => reject(error)
+          });
+        });
       } else {
         // Create new entry
         const response = await apiRequest("POST", "/api/daily", {
