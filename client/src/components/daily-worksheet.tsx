@@ -16,6 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TIME_BLOCKS as CANONICAL_TIME_BLOCKS } from "@shared/schema";
 
 // Convert canonical TIME_BLOCKS to frontend format with time display and quartiles
@@ -24,6 +26,70 @@ const TIME_BLOCKS = CANONICAL_TIME_BLOCKS.map(block => ({
   time: `${block.start}-${block.end}`,
   quartiles: 4
 }));
+
+// Drag and drop item types
+const ItemTypes = {
+  TASK: 'task',
+};
+
+// Draggable task component
+function DraggableTask({ task, children }: { task: any; children: React.ReactNode }) {
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: ItemTypes.TASK,
+    item: { taskId: task.id, taskName: task.name },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  }));
+
+  return (
+    <div
+      ref={drag}
+      style={{
+        opacity: isDragging ? 0.5 : 1,
+        cursor: 'move',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Drop zone component for quartiles
+function QuartileDropZone({ 
+  children, 
+  timeBlock, 
+  quartile, 
+  onDrop 
+}: { 
+  children: React.ReactNode; 
+  timeBlock: string; 
+  quartile: number; 
+  onDrop: (taskId: string, timeBlock: string, quartile: number) => void;
+}) {
+  const [{ isOver }, drop] = useDrop(() => ({
+    accept: ItemTypes.TASK,
+    drop: (item: { taskId: string; taskName: string }) => {
+      onDrop(item.taskId, timeBlock, quartile);
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+    }),
+  }));
+
+  return (
+    <div
+      ref={drop}
+      style={{
+        backgroundColor: isOver ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+        border: isOver ? '2px dashed rgba(59, 130, 246, 0.5)' : '2px dashed transparent',
+        transition: 'all 0.2s ease',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 interface DailyScheduleEntry {
   id?: string;
@@ -812,7 +878,60 @@ export default function DailyWorksheet() {
     setSelectedTaskId(null);
   };
 
+  // Handle task drop onto quartile
+  const handleTaskDrop = async (taskId: string, timeBlock: string, quartile: number) => {
+    try {
+      const entry = getScheduleEntry(timeBlock, quartile);
+      
+      if (entry?.id) {
+        // Update existing entry
+        updateScheduleMutation.mutate({
+          id: entry.id,
+          actualTaskId: taskId,
+          status: 'not_started',
+        });
+      } else {
+        // Create new entry
+        const response = await apiRequest("POST", "/api/daily", {
+          timeBlock: timeBlock,
+          quartile: quartile,
+          plannedTaskId: taskId,
+          actualTaskId: taskId,
+          status: 'not_started',
+          date: new Date(selectedDate + 'T00:00:00.000Z')
+        });
+        
+        if (response.ok) {
+          queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
+          toast({
+            title: "Task scheduled",
+            description: `Task assigned to ${timeBlock} Q${quartile}`,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to assign task:', error);
+      toast({
+        title: "Failed to assign task",
+        description: "Could not schedule task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Check if a task is scheduled in any quartile
+  const getTaskScheduleInfo = (taskId: string) => {
+    const scheduledEntry = schedule.find((entry: any) => 
+      entry.actualTaskId === taskId || entry.plannedTaskId === taskId
+    );
+    return scheduledEntry ? {
+      timeBlock: scheduledEntry.timeBlock,
+      quartile: scheduledEntry.quartile
+    } : null;
+  };
+
   return (
+    <DndProvider backend={HTML5Backend}>
     <div className="space-y-6">
       {/* Daily Overview Panel */}
       <Card className="sticky top-0 z-40 mb-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b shadow-sm">
@@ -878,37 +997,47 @@ export default function DailyWorksheet() {
                             // Only show actionable tasks, not milestones/outcomes
                             return hasTimeHorizonToday && hasWorkDateToday && task.type !== 'Milestone' && task.type !== 'Sub-Milestone';
                           }).map((task) => (
-                            <div
-                              key={task.id}
-                              className="flex items-center gap-3 p-3 rounded-lg border bg-card/50 hover:bg-card/80 transition-colors"
-                              data-testid={`row-today-task-${task.id}`}
-                            >
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-medium text-sm truncate" data-testid={`text-task-name-${task.id}`}>{task.name}</h4>
-                                  <Badge variant="outline" className="text-xs" data-testid={`badge-task-priority-${task.id}`}>
-                                    {task.priority}
-                                  </Badge>
-                                  {task.category && (
-                                    <Badge variant="secondary" className="text-xs" data-testid={`badge-task-category-${task.id}`}>
-                                      {task.category}
+                            <DraggableTask key={task.id} task={task}>
+                              <div
+                                className="flex items-center gap-3 p-3 rounded-lg border bg-card/50 hover:bg-card/80 transition-colors"
+                                data-testid={`row-today-task-${task.id}`}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="font-medium text-sm truncate" data-testid={`text-task-name-${task.id}`}>{task.name}</h4>
+                                    <Badge variant="outline" className="text-xs" data-testid={`badge-task-priority-${task.id}`}>
+                                      {task.priority}
                                     </Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                  <div className="flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    <span>{task.estimatedTime}h</span>
+                                    {task.category && (
+                                      <Badge variant="secondary" className="text-xs" data-testid={`badge-task-category-${task.id}`}>
+                                        {task.category}
+                                      </Badge>
+                                    )}
+                                    {/* Show scheduling indicator */}
+                                    {(() => {
+                                      const scheduleInfo = getTaskScheduleInfo(task.id);
+                                      return scheduleInfo ? (
+                                        <Badge variant="default" className="text-xs bg-blue-500 hover:bg-blue-600">
+                                          {scheduleInfo.timeBlock} Q{scheduleInfo.quartile}
+                                        </Badge>
+                                      ) : null;
+                                    })()}
                                   </div>
-                                  {task.dueDate && (
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
                                     <div className="flex items-center gap-1">
-                                      <CalendarDays className="h-3 w-3" />
-                                      <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+                                      <Clock className="h-3 w-3" />
+                                      <span>{task.estimatedTime}h</span>
                                     </div>
-                                  )}
+                                    {task.dueDate && (
+                                      <div className="flex items-center gap-1">
+                                        <CalendarDays className="h-3 w-3" />
+                                        <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            </DraggableTask>
                           ))
                         )}
                       </div>
@@ -1079,7 +1208,13 @@ export default function DailyWorksheet() {
                     }
                     
                     return (
-                      <div key={quartile} className={`bg-card p-2 ${entry?.status === 'in_progress' ? 'border-2 border-primary' : ''}`}>
+                      <QuartileDropZone
+                        key={quartile}
+                        timeBlock={block.name}
+                        quartile={quartile}
+                        onDrop={handleTaskDrop}
+                      >
+                        <div className={`bg-card p-2 ${entry?.status === 'in_progress' ? 'border-2 border-primary' : ''}`}>
                         {/* Compact header */}
                         <div className={`text-xs mb-2 font-medium ${entry?.status === 'in_progress' ? 'text-primary' : 'text-muted-foreground'}`}>
                           Q{quartile} {entry?.status === 'in_progress' && '• ACTIVE'}
@@ -1415,7 +1550,8 @@ export default function DailyWorksheet() {
                             </>
                           )}
                         </div>
-                      </div>
+                        </div>
+                      </QuartileDropZone>
                     );
                   })}
                 </div>
@@ -1702,6 +1838,7 @@ export default function DailyWorksheet() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+      </div>
+    </DndProvider>
   );
 }
