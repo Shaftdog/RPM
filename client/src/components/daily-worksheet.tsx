@@ -1179,13 +1179,23 @@ export default function DailyWorksheet() {
       if (!finalEntryId && taskId && sourceTimeBlock && sourceQuartile !== undefined) {
         console.log('No entryId provided, trying to find it from schedule');
         const foundEntry = schedule.find((e: any) => 
-          (e.actualTaskId === taskId || e.plannedTaskId === taskId) &&
+          matchesTask(e, taskId) &&
           e.timeBlock === sourceTimeBlock &&
           e.quartile === sourceQuartile
         );
         if (foundEntry) {
           finalEntryId = foundEntry.id;
           console.log('Found entry ID from schedule:', finalEntryId);
+        } else {
+          console.log('Could not find matching entry in schedule for:', { taskId, sourceTimeBlock, sourceQuartile });
+          console.log('Available schedule entries:', schedule.map(e => ({
+            id: e.id,
+            timeBlock: e.timeBlock,
+            quartile: e.quartile,
+            actualTaskId: e.actualTaskId,
+            plannedTaskId: e.plannedTaskId,
+            reflection: e.reflection
+          })));
         }
       }
       
