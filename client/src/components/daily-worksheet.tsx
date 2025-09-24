@@ -1597,12 +1597,12 @@ export default function DailyWorksheet() {
                             // Show task rows
                             <>
                               {visibleTasks.map((task, taskIndex) => (
-                                <div
-                                  key={task.id}
-                                  className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover:bg-secondary/50 ${
-                                    task.isActive ? 'bg-primary/10 border border-primary/20' : ''
-                                  }`}
-                                  onClick={() => {
+                                <DraggableTask key={task.id} task={{ id: task.id, name: task.name }}>
+                                  <div
+                                    className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover:bg-secondary/50 ${
+                                      task.isActive ? 'bg-primary/10 border border-primary/20' : ''
+                                    }`}
+                                    onClick={() => {
                                     if (entry?.id) {
                                       if (task.type === 'regular') {
                                         updateScheduleMutation.mutate({
@@ -1753,6 +1753,7 @@ export default function DailyWorksheet() {
                                     </div>
                                   ) : null}
                                 </div>
+                                </DraggableTask>
                               ))}
                               
                               {/* Overflow indicator with tooltip */}
