@@ -614,6 +614,30 @@ export default function DailyWorksheet() {
     },
   });
 
+  const deleteScheduleMutation = useMutation({
+    mutationFn: async (entryId: string) => {
+      const response = await apiRequest("DELETE", `/api/daily/${entryId}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to delete task");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
+      toast({
+        title: "Task deleted",
+        description: "Task has been removed from your schedule",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Delete failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  });
+
   // Create update task status mutation for regular tasks
   const updateTaskStatusMutation = useMutation({
     mutationFn: async (data: { taskId: string; status: string; xDate?: string; scheduleUpdateData?: any }) => {
@@ -1230,6 +1254,13 @@ export default function DailyWorksheet() {
     } : null;
   };
 
+  // Handle deleting a backlog task
+  const handleDeleteBacklogTask = (entryId: string, taskName: string) => {
+    if (confirm(`Are you sure you want to delete "${taskName}" from your backlog?`)) {
+      deleteScheduleMutation.mutate(entryId);
+    }
+  };
+
   return (
     <DndProvider backend={HTML5Backend}>
     <div className="space-y-6">
@@ -1467,6 +1498,18 @@ export default function DailyWorksheet() {
                                         </div>
                                       )}
                                     </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteBacklogTask(task.entryId, task.name);
+                                      }}
+                                      className="text-muted-foreground hover:text-destructive h-8 w-8 p-0"
+                                      data-testid={`button-delete-backlog-task-${task.id}`}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
                                   </div>
                                 </DraggableTask>
                               ))}
