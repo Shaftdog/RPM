@@ -9,9 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target, Info } from "lucide-react";
+import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target, Info, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TIME_BLOCKS as CANONICAL_TIME_BLOCKS } from "@shared/schema";
 
 // Convert canonical TIME_BLOCKS to frontend format with time display and quartiles
@@ -53,7 +54,175 @@ export default function DailyWorksheet() {
   // Manual multi-add state
   const [showAddTaskFor, setShowAddTaskFor] = useState<{timeBlock: string, quartile: number} | null>(null);
   
+  // Remove task confirmation dialog state
+  const [removeTaskDialog, setRemoveTaskDialog] = useState<{
+    open: boolean;
+    task: any;
+    entry: DailyScheduleEntry;
+    timeBlock: string;
+    quartile: number;
+    isPlanned: boolean;
+  } | null>(null);
+  const [skipRecurringToday, setSkipRecurringToday] = useState(true);
+  
+  // Client-side skip registry for recurring tasks (per-date)
+  const [skippedRecurring, setSkippedRecurring] = useState<Map<string, Set<string>>>(() => {
+    const map = new Map();
+    try {
+      const saved = localStorage.getItem('skippedRecurring');
+      if (saved) {
+        const skipArray = JSON.parse(saved);
+        map.set('global', new Set(skipArray));
+      }
+    } catch (e) {
+      console.warn('Failed to load skipped recurring tasks from localStorage:', e);
+    }
+    return map;
+  });
+  
   const { toast } = useToast();
+
+  // Handle task removal from schedule
+  const handleRemoveTask = async (dialogData: {
+    task: any;
+    entry: DailyScheduleEntry;
+    timeBlock: string;
+    quartile: number;
+    isPlanned: boolean;
+    skipRecurring?: boolean;
+  }) => {
+    const { task, entry, timeBlock, quartile, isPlanned, skipRecurring } = dialogData;
+    
+    try {
+      // Optimistically update the cache to remove the task immediately
+      const queryKey = ['/api/daily', selectedDate];
+      const previousData = queryClient.getQueryData<DailyScheduleEntry[]>(queryKey);
+      
+      let updateData: any = { id: entry.id! };
+      
+      // Handle different task types
+      if (task.type === 'recurring') {
+        // For recurring tasks, clear the reflection field or modify MULTIPLE_TASKS
+        if (entry.reflection?.startsWith('RECURRING_TASK:')) {
+          updateData.reflection = null;
+        } else if (entry.reflection?.startsWith('MULTIPLE_TASKS:')) {
+          // Remove this specific task from MULTIPLE_TASKS list by index (pipe-delimited format)
+          const taskNamesStr = entry.reflection.replace('MULTIPLE_TASKS:', '');
+          const taskNames = taskNamesStr.split('|').map(name => name.trim());
+          
+          // Extract index from task ID for multiple tasks (format: "multiple-TimeBlock-Quartile-index")
+          if (task.source === 'multiple_tasks' && task.id.includes('-')) {
+            const index = parseInt(task.id.split('-').pop() || '0');
+            if (index >= 0 && index < taskNames.length) {
+              taskNames.splice(index, 1); // Remove by index
+            }
+          }
+          
+          updateData.reflection = taskNames.length > 0 
+            ? `MULTIPLE_TASKS:${taskNames.join('|')}`
+            : null;
+        }
+      } else {
+        // For regular tasks, clear the appropriate ID field
+        updateData[isPlanned ? 'plannedTaskId' : 'actualTaskId'] = null;
+      }
+      
+      // Update cache optimistically
+      if (previousData) {
+        const updatedData = previousData.map(item => 
+          item.id === entry.id 
+            ? { ...item, ...updateData }
+            : item
+        );
+        queryClient.setQueryData(queryKey, updatedData);
+      }
+
+      // If skipping recurring task, add to skip registry
+      if (skipRecurring && task.type === 'recurring') {
+        // Find the actual recurring task to get its ID
+        let recurringTaskId = null;
+        
+        if (task.source === 'multiple_tasks') {
+          // For multiple tasks, find the matching recurring task by timeBlock, quartile, and name
+          const matchingRecurring = recurringTasks.find(rt => 
+            rt.timeBlock === timeBlock && 
+            rt.quartiles?.includes(quartile) &&
+            (rt.taskName || rt.name) === task.name
+          );
+          recurringTaskId = matchingRecurring?.id || `name:${task.name}`;
+        } else if (task.source === 'recurring_active' || task.source === 'recurring_candidate') {
+          // For single recurring tasks, find by timeBlock, quartile, and name
+          const matchingRecurring = recurringTasks.find(rt => 
+            rt.timeBlock === timeBlock && 
+            rt.quartiles?.includes(quartile) &&
+            (rt.taskName || rt.name) === task.name
+          );
+          recurringTaskId = matchingRecurring?.id || `name:${task.name}`;
+        }
+        
+        if (recurringTaskId) {
+          const skipKey = `${selectedDate}:${timeBlock}:${quartile}:${recurringTaskId}`;
+          setSkippedRecurring(prev => {
+            const newMap = new Map(prev);
+            if (!newMap.has('global')) {
+              newMap.set('global', new Set());
+            }
+            newMap.get('global')!.add(skipKey);
+            // Persist to localStorage
+            localStorage.setItem('skippedRecurring', JSON.stringify(Array.from(newMap.get('global')!)));
+            return newMap;
+          });
+        }
+      }
+
+      // Make the API call to remove the task
+      updateScheduleMutation.mutate(updateData, {
+        onError: () => {
+          // Rollback on error
+          if (previousData) {
+            queryClient.setQueryData(queryKey, previousData);
+          }
+          // Also rollback skip registry on error
+          if (skipRecurring && task.type === 'recurring') {
+            // Find the same recurring task ID used in the forward path
+            let recurringTaskId = null;
+            const matchingRecurring = recurringTasks.find(rt => 
+              rt.timeBlock === timeBlock && 
+              rt.quartiles?.includes(quartile) &&
+              (rt.taskName || rt.name) === task.name
+            );
+            recurringTaskId = matchingRecurring?.id || `name:${task.name}`;
+            
+            if (recurringTaskId) {
+              const skipKey = `${selectedDate}:${timeBlock}:${quartile}:${recurringTaskId}`;
+              setSkippedRecurring(prev => {
+                const newMap = new Map(prev);
+                const globalSet = newMap.get('global');
+                if (globalSet) {
+                  globalSet.delete(skipKey);
+                  localStorage.setItem('skippedRecurring', JSON.stringify(Array.from(globalSet)));
+                }
+                return newMap;
+              });
+            }
+          }
+        }
+      });
+
+      toast({
+        title: "Task removed",
+        description: `Removed "${task.name}" from ${timeBlock} Q${quartile}${skipRecurring ? ' and skipped today' : ''}`,
+      });
+
+    } catch (error) {
+      console.error('Failed to remove task:', error);
+      toast({
+        title: "Failed to remove task",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    }
+  };
 
   const { data: schedule = [], isLoading: scheduleLoading } = useQuery<DailyScheduleEntry[]>({
     queryKey: ['/api/daily', selectedDate],
@@ -451,6 +620,12 @@ export default function DailyWorksheet() {
       // Don't show recurring tasks if this entry is already completed
       if (entry?.status === 'completed') return false;
       
+      // Check if this recurring task is skipped for today
+      const skipKey = `${selectedDate}:${timeBlock}:${quartile}:${rt.id}`;
+      const skipKeyFallback = `${selectedDate}:${timeBlock}:${quartile}:name:${rt.taskName || rt.name}`;
+      const globalSkipped = skippedRecurring.get('global');
+      if (globalSkipped?.has(skipKey) || globalSkipped?.has(skipKeyFallback)) return false;
+      
       // Must match time block
       if (rt.timeBlock !== timeBlock) return false;
       
@@ -776,6 +951,29 @@ export default function DailyWorksheet() {
                                   <span className="flex-1 truncate line-clamp-1" title={task.name}>
                                     {task.name}
                                   </span>
+                                  
+                                  {/* Remove button - show for any active task */}
+                                  {task.isActive && entry?.id && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-4 w-4 p-0 hover:bg-destructive/20 hover:text-destructive flex-shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setRemoveTaskDialog({
+                                          open: true,
+                                          task,
+                                          entry,
+                                          timeBlock: block.name,
+                                          quartile,
+                                          isPlanned: !!entry.plannedTaskId && entry.plannedTaskId === task.id
+                                        });
+                                      }}
+                                      data-testid={`button-remove-${block.name}-${quartile}-${task.id}`}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  )}
                                   
                                   {/* Info button for regular tasks */}
                                   {task.type === 'regular' && task.isActive && (
@@ -1216,6 +1414,59 @@ export default function DailyWorksheet() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Remove Task Confirmation Dialog */}
+      <AlertDialog 
+        open={removeTaskDialog?.open || false} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoveTaskDialog(null);
+            setSkipRecurringToday(true); // Reset to default
+          }
+        }}
+        data-testid="dialog-remove-task"
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from schedule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove "{removeTaskDialog?.task?.name}" from {removeTaskDialog?.timeBlock} Quartile {removeTaskDialog?.quartile}.
+              {removeTaskDialog?.task?.type === 'recurring' && (
+                <div className="mt-3">
+                  <label className="flex items-center space-x-2 text-sm cursor-pointer">
+                    <Checkbox 
+                      checked={skipRecurringToday}
+                      onCheckedChange={(checked) => setSkipRecurringToday(!!checked)}
+                      data-testid="checkbox-skip-recurring"
+                    />
+                    <span>Also skip this recurring occurrence for today</span>
+                  </label>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-remove">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={updateScheduleMutation.isPending}
+              onClick={() => {
+                if (removeTaskDialog) {
+                  handleRemoveTask({
+                    ...removeTaskDialog,
+                    skipRecurring: removeTaskDialog.task.type === 'recurring' ? skipRecurringToday : false
+                  });
+                  setRemoveTaskDialog(null);
+                  setSkipRecurringToday(true);
+                }
+              }}
+              data-testid="button-confirm-remove"
+            >
+              {updateScheduleMutation.isPending ? 'Removing...' : 'Remove'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
