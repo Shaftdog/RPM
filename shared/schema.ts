@@ -70,6 +70,9 @@ export const TIME_BLOCKS = [
   { name: "WIND DOWN", start: "19:00", end: "21:00" }
 ] as const;
 
+// Backlog constant for managing incomplete/rescheduled tasks
+export const BACKLOG_TIME_BLOCK = "BACKLOG" as const;
+
 // Tasks table
 export const tasks = pgTable("tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -165,7 +168,7 @@ export const dailySchedules = pgTable("daily_schedules", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   date: timestamp("date").notNull(),
   timeBlock: text("time_block").notNull(), // e.g., "PHYSICAL MENTAL"
-  quartile: integer("quartile").notNull(), // 1-4
+  quartile: integer("quartile").notNull(), // 0 for BACKLOG, else 1-4
   plannedTaskId: varchar("planned_task_id").references(() => tasks.id, { onDelete: "set null" }),
   actualTaskId: varchar("actual_task_id").references(() => tasks.id, { onDelete: "set null" }),
   status: statusEnum("status").notNull().default("not_started"),
@@ -338,6 +341,15 @@ export const insertDailyScheduleSchema = createInsertSchema(dailySchedules).omit
   userId: true,
   createdAt: true,
   updatedAt: true,
+}).refine((data) => {
+  // Allow quartile 0 only for BACKLOG timeBlock
+  if (data.timeBlock === BACKLOG_TIME_BLOCK) {
+    return data.quartile === 0;
+  }
+  // For regular time blocks, quartile must be 1-4
+  return data.quartile >= 1 && data.quartile <= 4;
+}, {
+  message: "Quartile must be 0 for BACKLOG timeBlock, or 1-4 for regular time blocks"
 });
 
 export const insertTaskDependencySchema = createInsertSchema(taskDependencies).omit({
