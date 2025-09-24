@@ -1139,9 +1139,20 @@ export default function DailyWorksheet() {
   const handleTaskDrop = async (item: any, timeBlock: string, quartile: number) => {
     const { entryId, taskId, taskName, sourceTimeBlock, sourceQuartile } = item;
     
+    console.log('handleTaskDrop called with:', {
+      entryId,
+      taskId,
+      taskName,
+      sourceTimeBlock,
+      sourceQuartile,
+      targetTimeBlock: timeBlock,
+      targetQuartile: quartile
+    });
+    
     try {
       // Early return if dropping to same location
       if (sourceTimeBlock === timeBlock && sourceQuartile === quartile) {
+        console.log('Dropping to same location, ignoring');
         return;
       }
       
@@ -1163,20 +1174,37 @@ export default function DailyWorksheet() {
         }
       }
       
-      if (entryId) {
+      // Try to find the entry ID if not provided (fallback for production issues)
+      let finalEntryId = entryId;
+      if (!finalEntryId && taskId && sourceTimeBlock && sourceQuartile !== undefined) {
+        console.log('No entryId provided, trying to find it from schedule');
+        const foundEntry = schedule.find((e: any) => 
+          (e.actualTaskId === taskId || e.plannedTaskId === taskId) &&
+          e.timeBlock === sourceTimeBlock &&
+          e.quartile === sourceQuartile
+        );
+        if (foundEntry) {
+          finalEntryId = foundEntry.id;
+          console.log('Found entry ID from schedule:', finalEntryId);
+        }
+      }
+      
+      if (finalEntryId) {
         // We have an existing entry ID - just update it directly
+        console.log('Using entryId to update existing entry:', finalEntryId);
         const updateData: any = {
-          id: entryId,
+          id: finalEntryId,
           timeBlock: timeBlock,
           quartile: quartile,
         };
         
         // Add FROM metadata when moving to backlog
         if (timeBlock === BACKLOG_TIME_BLOCK && sourceTimeBlock && sourceTimeBlock !== BACKLOG_TIME_BLOCK) {
-          const currentEntry = schedule.find((e: any) => e.id === entryId);
+          const currentEntry = schedule.find((e: any) => e.id === finalEntryId);
           updateData.reflection = (currentEntry?.reflection || '') + ` FROM:${sourceTimeBlock}`;
         }
         
+        console.log('Updating with data:', updateData);
         updateScheduleMutation.mutate(updateData);
         toast({
           title: timeBlock === BACKLOG_TIME_BLOCK ? "Moved to backlog" : "Task moved",
@@ -1705,19 +1733,26 @@ export default function DailyWorksheet() {
                           ) : (
                             // Show task rows
                             <>
-                              {visibleTasks.map((task, taskIndex) => (
-                                <DraggableTask key={task.id} task={{ 
-                                  id: task.id, 
-                                  name: task.name,
-                                  entryId: entry?.id,
-                                  timeBlock: block.name,
-                                  quartile
-                                }}>
-                                  <div
-                                    className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover:bg-secondary/50 ${
-                                      task.isActive ? 'bg-primary/10 border border-primary/20' : ''
-                                    }`}
-                                    onClick={() => {
+                              {visibleTasks.map((task, taskIndex) => {
+                                // Find the correct entry for this specific task
+                                const taskEntry = schedule.find((e: any) => 
+                                  (e.actualTaskId === task.id || e.plannedTaskId === task.id) &&
+                                  e.timeBlock === block.name &&
+                                  e.quartile === quartile
+                                );
+                                return (
+                                  <DraggableTask key={task.id} task={{ 
+                                    id: task.id, 
+                                    name: task.name,
+                                    entryId: taskEntry?.id,
+                                    timeBlock: block.name,
+                                    quartile
+                                  }}>
+                                    <div
+                                      className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover:bg-secondary/50 ${
+                                        task.isActive ? 'bg-primary/10 border border-primary/20' : ''
+                                      }`}
+                                      onClick={() => {
                                     if (entry?.id) {
                                       if (task.type === 'regular') {
                                         updateScheduleMutation.mutate({
@@ -1869,7 +1904,8 @@ export default function DailyWorksheet() {
                                   ) : null}
                                 </div>
                                 </DraggableTask>
-                              ))}
+                                );
+                              })}
                               
                               {/* Overflow indicator with tooltip */}
                               {hiddenCount > 0 && (
