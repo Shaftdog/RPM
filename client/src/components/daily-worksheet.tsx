@@ -966,16 +966,28 @@ export default function DailyWorksheet() {
     try {
       const entry = getScheduleEntry(timeBlock, quartile);
       
-      // Find existing location of the task to preserve original time block
+      // Find existing location of the task for both metadata and source clearing
+      const existingEntry = schedule.find(e => 
+        (e.actualTaskId === taskId || e.plannedTaskId === taskId)
+      );
+      
       let originalTimeBlock = '';
-      if (timeBlock === BACKLOG_TIME_BLOCK) {
-        const existingEntry = schedule.find(e => 
-          (e.actualTaskId === taskId || e.plannedTaskId === taskId) && 
-          e.timeBlock !== BACKLOG_TIME_BLOCK
-        );
-        if (existingEntry) {
-          originalTimeBlock = existingEntry.timeBlock;
-        }
+      if (timeBlock === BACKLOG_TIME_BLOCK && existingEntry && existingEntry.timeBlock !== BACKLOG_TIME_BLOCK) {
+        originalTimeBlock = existingEntry.timeBlock;
+      }
+      
+      // Clear the task from its original location if it's moving to a different spot
+      if (existingEntry && 
+          (existingEntry.timeBlock !== timeBlock || existingEntry.quartile !== quartile) && 
+          existingEntry.id) {
+        
+        // Clear the source by removing the task ID, but keep the entry structure
+        updateScheduleMutation.mutate({
+          id: existingEntry.id,
+          actualTaskId: null,
+          plannedTaskId: null,
+          status: 'not_started',
+        });
       }
       
       if (entry?.id) {
