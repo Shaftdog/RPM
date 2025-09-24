@@ -1000,8 +1000,8 @@ export default function DailyWorksheet() {
         // Clear the source by removing the task ID, but keep the entry structure
         updateScheduleMutation.mutate({
           id: existingEntry.id,
-          actualTaskId: null,
-          plannedTaskId: null,
+          actualTaskId: null as any,
+          plannedTaskId: null as any,
           status: 'not_started',
         });
       }
@@ -1037,7 +1037,7 @@ export default function DailyWorksheet() {
           queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
           toast({
             title: "Task scheduled",
-            description: `Task assigned to ${timeBlock} Q${quartile}`,
+            description: timeBlock === BACKLOG_TIME_BLOCK ? "Task moved to backlog" : `Task assigned to ${timeBlock} Q${quartile}`,
           });
         } else {
         }
