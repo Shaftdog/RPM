@@ -408,7 +408,7 @@ export async function processAICommand(
 
     Available Action Types:
     1. move_task: Move tasks between time horizons or categories
-       Format: { "type": "move_task", "taskId": "uuid", "updates": { "newTimeHorizon": "Week|Quarter|Month|Today", "newCategory": "Personal|Business", "newSubcategory": "Physical|Mental|etc" } }
+       Format: { "type": "move_task", "taskId": "uuid", "updates": { "newTimeHorizon": "VISION|10 Year|5 Year|1 Year|Quarter|Month|Week|Today|BACKLOG", "newCategory": "Personal|Business", "newSubcategory": "Physical|Mental|Relationship|Environmental|Financial|Adventure|Marketing|Sales|Operations|Products|Production" } }
     
     2. update_task: Update task properties like priority or status
        Format: { "type": "update_task", "taskId": "uuid", "updates": { "priority": "High|Medium|Low", "status": "not_started|in_progress|completed" } }

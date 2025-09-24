@@ -181,10 +181,23 @@ export default function DailyWorksheet() {
         switch (action.type) {
           case 'move_task':
             if (action.taskId && action.updates) {
-              await apiRequest("POST", "/api/planning/move", {
-                taskId: action.taskId,
-                ...action.updates
-              });
+              // Map action updates to the format expected by /api/planning/move
+              const moveData: any = { taskId: action.taskId };
+              
+              if (action.updates.timeHorizon || action.updates.newTimeHorizon) {
+                moveData.newTimeHorizon = action.updates.newTimeHorizon || action.updates.timeHorizon;
+              }
+              if (action.updates.category || action.updates.newCategory) {
+                moveData.newCategory = action.updates.newCategory || action.updates.category;
+              }
+              if (action.updates.subcategory || action.updates.newSubcategory) {
+                moveData.newSubcategory = action.updates.newSubcategory || action.updates.subcategory;
+              }
+              if (action.updates.xDate) {
+                moveData.xDate = action.updates.xDate;
+              }
+              
+              await apiRequest("POST", "/api/planning/move", moveData);
               results.push({ action, success: true });
             } else {
               failures.push({ action, error: 'Missing taskId or updates' });
