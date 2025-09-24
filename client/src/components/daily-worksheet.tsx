@@ -758,6 +758,7 @@ export default function DailyWorksheet() {
     const selectedDateObj = new Date(selectedDate);
     const dayOfWeek = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
     
+    
     const candidates: Array<{
       id: string;
       name: string;
@@ -771,26 +772,24 @@ export default function DailyWorksheet() {
     if (entry && !entry.reflection?.startsWith('PLACEHOLDER:') && entry.status !== 'completed') {
       if (entry.actualTaskId) {
         const task = tasks.find(t => t.id === entry.actualTaskId);
-        if (task) {
-          candidates.push({
-            id: entry.actualTaskId,
-            name: task.name,
-            type: 'regular',
-            isActive: true,
-            source: 'active'
-          });
-        }
+        // Always add the candidate, even if task is not found in tasks array
+        candidates.push({
+          id: entry.actualTaskId,
+          name: task?.name || `Task ${entry.actualTaskId.slice(0, 8)}...`, // Fallback name if task not found
+          type: 'regular',
+          isActive: true,
+          source: 'active'
+        });
       } else if (entry.plannedTaskId) {
         const task = tasks.find(t => t.id === entry.plannedTaskId);
-        if (task) {
-          candidates.push({
-            id: entry.plannedTaskId,
-            name: task.name,
-            type: 'regular',
-            isActive: true,
-            source: 'planned'
-          });
-        }
+        // Always add the candidate, even if task is not found in tasks array
+        candidates.push({
+          id: entry.plannedTaskId,
+          name: task?.name || `Task ${entry.plannedTaskId.slice(0, 8)}...`, // Fallback name if task not found
+          type: 'regular',
+          isActive: true,
+          source: 'planned'
+        });
       } else if (entry.reflection?.startsWith('RECURRING_TASK:')) {
         const taskName = entry.reflection.replace('RECURRING_TASK:', '');
         candidates.push({
@@ -856,6 +855,7 @@ export default function DailyWorksheet() {
       });
     });
     
+    
     return candidates;
   };
 
@@ -880,6 +880,7 @@ export default function DailyWorksheet() {
 
   // Handle task drop onto quartile
   const handleTaskDrop = async (taskId: string, timeBlock: string, quartile: number) => {
+    
     try {
       const entry = getScheduleEntry(timeBlock, quartile);
       
@@ -902,11 +903,13 @@ export default function DailyWorksheet() {
         });
         
         if (response.ok) {
+          const responseData = await response.json();
           queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
           toast({
             title: "Task scheduled",
             description: `Task assigned to ${timeBlock} Q${quartile}`,
           });
+        } else {
         }
       }
     } catch (error) {
