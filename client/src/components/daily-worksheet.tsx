@@ -1108,8 +1108,8 @@ export default function DailyWorksheet() {
         )}
       </Card>
 
-      {/* Top Controls */}
-      <Card>
+      {/* Top Controls - Sticky Positioned */}
+      <Card className="sticky top-0 z-50 bg-background border-b shadow-sm">
         <CardContent className="p-6">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-6">
