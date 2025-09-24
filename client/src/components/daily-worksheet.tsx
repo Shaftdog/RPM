@@ -36,7 +36,13 @@ const ItemTypes = {
 function DraggableTask({ task, children }: { task: any; children: React.ReactNode }) {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: ItemTypes.TASK,
-    item: { taskId: task.id, taskName: task.name },
+    item: { 
+      entryId: task.entryId, // Include the schedule entry ID
+      taskId: task.id, 
+      taskName: task.name,
+      sourceTimeBlock: task.timeBlock,
+      sourceQuartile: task.quartile
+    },
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
@@ -75,14 +81,14 @@ function QuartileDropZone({
   children: React.ReactNode; 
   timeBlock: string; 
   quartile: number; 
-  onDrop: (taskId: string, timeBlock: string, quartile: number) => void;
+  onDrop: (item: any, timeBlock: string, quartile: number) => void;
   isOccupied?: boolean;
 }) {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: ItemTypes.TASK,
-    drop: (item: { taskId: string; taskName: string }) => {
+    drop: (item: any) => {
       if (!isOccupied) {
-        onDrop(item.taskId, timeBlock, quartile);
+        onDrop(item, timeBlock, quartile);
       }
     },
     canDrop: () => !isOccupied,
@@ -156,12 +162,12 @@ function BacklogDropZone({
   onDrop 
 }: { 
   children: React.ReactNode; 
-  onDrop: (taskId: string, timeBlock: string, quartile: number) => void;
+  onDrop: (item: any, timeBlock: string, quartile: number) => void;
 }) {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: ItemTypes.TASK,
-    drop: (item: { taskId: string; taskName: string }) => {
-      onDrop(item.taskId, BACKLOG_TIME_BLOCK, 0);
+    drop: (item: any) => {
+      onDrop(item, BACKLOG_TIME_BLOCK, 0);
     },
     canDrop: () => true, // Backlog always accepts tasks
     collect: (monitor) => ({
@@ -1129,79 +1135,67 @@ export default function DailyWorksheet() {
     return null;
   };
 
-  // Handle task drop onto quartile
-  const handleTaskDrop = async (taskId: string, timeBlock: string, quartile: number) => {
-    const taskName = tasks.find(t => t.id === taskId)?.name || taskId;
+  // Handle task drop onto quartile or backlog
+  const handleTaskDrop = async (item: any, timeBlock: string, quartile: number) => {
+    const { entryId, taskId, taskName, sourceTimeBlock, sourceQuartile } = item;
     
     try {
-      // Find existing entry for this task across all dates
-      const taskLocation = await findTaskLocationAcrossAllDates(taskId);
-      const existingEntry = taskLocation?.entry;
-      const existingDate = taskLocation?.date;
-      
-      // Early return for duplicate assignment (same location and date)
-      if (existingEntry && existingEntry.timeBlock === timeBlock && existingEntry.quartile === quartile && existingDate === selectedDate) {
+      // Early return if dropping to same location
+      if (sourceTimeBlock === timeBlock && sourceQuartile === quartile) {
         return;
       }
       
       // Check if destination quartile is occupied (except when moving to backlog)
-      const destinationEntry = getScheduleEntry(timeBlock, quartile);
-      if (destinationEntry && (destinationEntry.actualTaskId || destinationEntry.plannedTaskId || destinationEntry.reflection) && timeBlock !== BACKLOG_TIME_BLOCK) {
-        // Find the task name for the existing occupant
-        const occupyingTask = tasks.find(t => 
-          t.id === destinationEntry.actualTaskId || t.id === destinationEntry.plannedTaskId
-        );
-        const occupyingTaskName = occupyingTask?.name || 'another task';
-        
-        toast({
-          title: "Cannot drop here",
-          description: `${timeBlock} Q${quartile} is already occupied by ${occupyingTaskName}. Try a different quartile or move to backlog.`,
-          variant: "destructive"
-        });
-        return;
+      if (timeBlock !== BACKLOG_TIME_BLOCK) {
+        const destinationEntry = getScheduleEntry(timeBlock, quartile);
+        if (destinationEntry && (destinationEntry.actualTaskId || destinationEntry.plannedTaskId || destinationEntry.reflection)) {
+          const occupyingTask = tasks.find(t => 
+            t.id === destinationEntry.actualTaskId || t.id === destinationEntry.plannedTaskId
+          );
+          const occupyingTaskName = occupyingTask?.name || 'another task';
+          
+          toast({
+            title: "Cannot drop here",
+            description: `${timeBlock} Q${quartile} is already occupied by ${occupyingTaskName}. Try a different quartile or move to backlog.`,
+            variant: "destructive"
+          });
+          return;
+        }
       }
       
-      let originalTimeBlock = '';
-      if (timeBlock === BACKLOG_TIME_BLOCK && existingEntry && existingEntry.timeBlock !== BACKLOG_TIME_BLOCK) {
-        originalTimeBlock = existingEntry.timeBlock;
-      }
-      
-      if (existingEntry) {
-        // MOVE: Update existing entry to new location and date
+      if (entryId) {
+        // We have an existing entry ID - just update it directly
         const updateData: any = {
-          id: existingEntry.id!,
+          id: entryId,
           timeBlock: timeBlock,
           quartile: quartile,
-          status: 'not_started',
-          date: new Date(selectedDate + 'T00:00:00.000Z'), // Update date to current selected date
         };
         
-        // Build reflection with stable key
-        let reflection = `KEY=${buildKey(taskId)}`;
-        if (isSynthetic(taskId)) {
-          reflection += ` ${taskId.startsWith('recurring-') ? 'RECURRING_TASK' : 'MULTIPLE_TASKS'}: ${taskName}`;
-        }
-        if (timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock) {
-          reflection += ` FROM:${originalTimeBlock}`;
-        }
-        // Add move info if moving between dates
-        if (existingDate && existingDate !== selectedDate) {
-          reflection += ` MOVED_FROM:${existingDate}`;
-        }
-        updateData.reflection = reflection;
-        
-        // Set task IDs only for real tasks
-        if (!isSynthetic(taskId)) {
-          updateData.actualTaskId = taskId;
-          updateData.plannedTaskId = taskId;
-        } else {
-          updateData.actualTaskId = null;
-          updateData.plannedTaskId = null;
+        // Add FROM metadata when moving to backlog
+        if (timeBlock === BACKLOG_TIME_BLOCK && sourceTimeBlock && sourceTimeBlock !== BACKLOG_TIME_BLOCK) {
+          const currentEntry = schedule.find((e: any) => e.id === entryId);
+          updateData.reflection = (currentEntry?.reflection || '') + ` FROM:${sourceTimeBlock}`;
         }
         
         updateScheduleMutation.mutate(updateData);
+        toast({
+          title: timeBlock === BACKLOG_TIME_BLOCK ? "Moved to backlog" : "Task moved",
+          description: timeBlock === BACKLOG_TIME_BLOCK 
+            ? "Task has been moved to backlog for rescheduling"
+            : `Task moved to ${timeBlock} Q${quartile}`,
+        });
       } else {
-        // CREATE: New entry for this task
+        // No entry ID - this is a new task being added from outside (shouldn't happen for backlog moves)
+        if (timeBlock === BACKLOG_TIME_BLOCK) {
+          toast({
+            title: "Cannot add to backlog",
+            description: "Only scheduled tasks can be moved to backlog",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Create new entry for non-backlog destinations
         const createData: any = {
           timeBlock: timeBlock,
           quartile: quartile,
@@ -1209,37 +1203,25 @@ export default function DailyWorksheet() {
           date: new Date(selectedDate + 'T00:00:00.000Z'),
         };
         
-        // Build reflection with stable key
-        let reflection = `KEY=${buildKey(taskId)}`;
-        if (isSynthetic(taskId)) {
-          reflection += ` ${taskId.startsWith('recurring-') ? 'RECURRING_TASK' : 'MULTIPLE_TASKS'}: ${taskName}`;
-        }
-        if (timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock) {
-          reflection += ` FROM:${originalTimeBlock}`;
-        }
-        createData.reflection = reflection;
-        
-        // Set task IDs only for real tasks
-        if (!isSynthetic(taskId)) {
+        if (taskId && !isSynthetic(taskId)) {
           createData.plannedTaskId = taskId;
           createData.actualTaskId = taskId;
         }
         
         const response = await apiRequest("POST", "/api/daily", createData);
-        
         if (response.ok) {
           queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
           toast({
             title: "Task scheduled",
-            description: timeBlock === BACKLOG_TIME_BLOCK ? "Task moved to backlog" : `Task assigned to ${timeBlock} Q${quartile}`,
+            description: `Task assigned to ${timeBlock} Q${quartile}`,
           });
         }
       }
     } catch (error) {
-      console.error('Failed to assign task:', error);
+      console.error('Failed to move task:', error);
       toast({
-        title: "Failed to assign task",
-        description: "Could not schedule task",
+        title: "Failed to move task",
+        description: "Could not update task location",
         variant: "destructive",
       });
     }
@@ -1332,7 +1314,13 @@ export default function DailyWorksheet() {
                             // Only show actionable tasks, not milestones/outcomes
                             return hasTimeHorizonToday && hasWorkDateToday && task.type !== 'Milestone' && task.type !== 'Sub-Milestone';
                           }).map((task) => (
-                            <DraggableTask key={task.id} task={task}>
+                            <DraggableTask key={task.id} task={{
+                              ...task,
+                              entryId: schedule.find((e: any) => 
+                                (e.actualTaskId === task.id || e.plannedTaskId === task.id) &&
+                                e.timeBlock !== BACKLOG_TIME_BLOCK
+                              )?.id
+                            }}>
                               <div
                                 className="flex items-center gap-3 p-3 rounded-lg border bg-card/50 hover:bg-card/80 transition-colors"
                                 data-testid={`row-today-task-${task.id}`}
@@ -1469,7 +1457,13 @@ export default function DailyWorksheet() {
                             <ScrollArea className="h-[400px] w-full pr-4">
                               <div className="space-y-2">
                               {backlogTasks.map((task) => (
-                                <DraggableTask key={task.id} task={{ id: task.taskId || task.id, name: task.name }}>
+                                <DraggableTask key={task.id} task={{ 
+                                  id: task.taskId || task.id, 
+                                  name: task.name,
+                                  entryId: task.entryId,
+                                  timeBlock: BACKLOG_TIME_BLOCK,
+                                  quartile: 0
+                                }}>
                                   <div
                                     className="flex items-center gap-3 p-3 mb-2 rounded-lg border bg-card hover:bg-card/80 transition-colors"
                                     data-testid={`row-backlog-task-${task.id}`}
@@ -1712,7 +1706,13 @@ export default function DailyWorksheet() {
                             // Show task rows
                             <>
                               {visibleTasks.map((task, taskIndex) => (
-                                <DraggableTask key={task.id} task={{ id: task.id, name: task.name }}>
+                                <DraggableTask key={task.id} task={{ 
+                                  id: task.id, 
+                                  name: task.name,
+                                  entryId: entry?.id,
+                                  timeBlock: block.name,
+                                  quartile
+                                }}>
                                   <div
                                     className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover:bg-secondary/50 ${
                                       task.isActive ? 'bg-primary/10 border border-primary/20' : ''
