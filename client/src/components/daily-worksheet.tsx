@@ -851,7 +851,11 @@ export default function DailyWorksheet() {
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm text-muted-foreground">
-                      Today's scheduled tasks and activities for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                      Today's scheduled tasks and activities for {(() => {
+                        const [year, month, day] = selectedDate.split('-');
+                        const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                        return localDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+                      })()}
                     </p>
                   </div>
                   <div className="relative h-40">
