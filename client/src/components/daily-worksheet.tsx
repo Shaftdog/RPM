@@ -1060,18 +1060,36 @@ export default function DailyWorksheet() {
     setSelectedTaskId(null);
   };
 
+  // Helper functions for task matching
+  const isSynthetic = (taskId: string) => taskId.startsWith('recurring-') || taskId.startsWith('multiple-');
+  const buildKey = (taskId: string) => isSynthetic(taskId) ? `synthetic:${taskId}` : `task:${taskId}`;
+  const matchesTask = (entry: any, taskId: string) => {
+    if (!isSynthetic(taskId)) {
+      return entry.actualTaskId === taskId || entry.plannedTaskId === taskId;
+    } else {
+      return (entry.reflection || '').includes(`KEY=${buildKey(taskId)}`);
+    }
+  };
+
   // Handle task drop onto quartile
   const handleTaskDrop = async (taskId: string, timeBlock: string, quartile: number) => {
+    const taskName = tasks.find(t => t.id === taskId)?.name || taskId;
     
     try {
+      // Find existing entry for this task anywhere in the schedule
+      const existingEntry = schedule.find((e: any) => matchesTask(e, taskId));
       
-      const entry = getScheduleEntry(timeBlock, quartile);
+      // Early return for duplicate assignment (same location)
+      if (existingEntry && existingEntry.timeBlock === timeBlock && existingEntry.quartile === quartile) {
+        return;
+      }
       
       // Check if destination quartile is occupied (except when moving to backlog)
-      if (entry && (entry.actualTaskId || entry.plannedTaskId) && timeBlock !== BACKLOG_TIME_BLOCK) {
+      const destinationEntry = getScheduleEntry(timeBlock, quartile);
+      if (destinationEntry && (destinationEntry.actualTaskId || destinationEntry.plannedTaskId || destinationEntry.reflection) && timeBlock !== BACKLOG_TIME_BLOCK) {
         // Find the task name for the existing occupant
         const occupyingTask = tasks.find(t => 
-          t.id === entry.actualTaskId || t.id === entry.plannedTaskId
+          t.id === destinationEntry.actualTaskId || t.id === destinationEntry.plannedTaskId
         );
         const occupyingTaskName = occupyingTask?.name || 'another task';
         
@@ -1083,97 +1101,73 @@ export default function DailyWorksheet() {
         return;
       }
       
-      // Simple approach: For regular tasks, clear all entries with this task ID
-      if (!taskId.startsWith('recurring-') && !taskId.startsWith('multiple-')) {
-        // Find all entries that have this task ID and clear them
-        const entriesToClear = schedule.filter(e => 
-          (e.actualTaskId === taskId || e.plannedTaskId === taskId) &&
-          e.id &&
-          (e.timeBlock !== timeBlock || e.quartile !== quartile)
-        );
-        
-        // Clear each source entry
-        entriesToClear.forEach(entry => {
-          updateScheduleMutation.mutate({
-            id: entry.id!,
-            actualTaskId: null as any,
-            plannedTaskId: null as any,
-            status: 'not_started',
-          });
-        });
-      }
-      
       let originalTimeBlock = '';
-      if (timeBlock === BACKLOG_TIME_BLOCK) {
-        // For backlog, find any existing location to preserve metadata
-        const existingEntry = schedule.find(e => 
-          (e.actualTaskId === taskId || e.plannedTaskId === taskId)
-        );
-        if (existingEntry && existingEntry.timeBlock !== BACKLOG_TIME_BLOCK) {
-          originalTimeBlock = existingEntry.timeBlock;
-        }
+      if (timeBlock === BACKLOG_TIME_BLOCK && existingEntry && existingEntry.timeBlock !== BACKLOG_TIME_BLOCK) {
+        originalTimeBlock = existingEntry.timeBlock;
       }
       
-      if (entry?.id) {
-        // Update existing entry
+      if (existingEntry) {
+        // MOVE: Update existing entry to new location
         const updateData: any = {
-          id: entry.id,
+          id: existingEntry.id!,
+          timeBlock: timeBlock,
+          quartile: quartile,
           status: 'not_started',
         };
         
-        // Handle task IDs based on type
-        if (!taskId.startsWith('recurring-') && !taskId.startsWith('multiple-')) {
-          // For real tasks, set the task ID
+        // Build reflection with stable key
+        let reflection = `KEY=${buildKey(taskId)}`;
+        if (isSynthetic(taskId)) {
+          reflection += ` ${taskId.startsWith('recurring-') ? 'RECURRING_TASK' : 'MULTIPLE_TASKS'}: ${taskName}`;
+        }
+        if (timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock) {
+          reflection += ` FROM:${originalTimeBlock}`;
+        }
+        updateData.reflection = reflection;
+        
+        // Set task IDs only for real tasks
+        if (!isSynthetic(taskId)) {
           updateData.actualTaskId = taskId;
           updateData.plannedTaskId = taskId;
         } else {
-          // For synthetic tasks, clear task IDs and store in reflection
           updateData.actualTaskId = null;
           updateData.plannedTaskId = null;
-          updateData.reflection = taskId.startsWith('recurring-') 
-            ? `RECURRING_TASK: ${taskName}`
-            : `MULTIPLE_TASKS: ${taskName}`;
-        }
-        
-        // If moving to backlog, preserve original location
-        if (timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock) {
-          updateData.reflection = (updateData.reflection || '') + ` FROM:${originalTimeBlock}`;
         }
         
         updateScheduleMutation.mutate(updateData);
       } else {
-        // Create new entry
+        // CREATE: New entry for this task
         const createData: any = {
           timeBlock: timeBlock,
           quartile: quartile,
           status: 'not_started',
           date: new Date(selectedDate + 'T00:00:00.000Z'),
-          reflection: timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock ? `FROM:${originalTimeBlock}` : ''
         };
         
-        // Handle task IDs based on type
-        if (!taskId.startsWith('recurring-') && !taskId.startsWith('multiple-')) {
-          // For real tasks, set the task ID
+        // Build reflection with stable key
+        let reflection = `KEY=${buildKey(taskId)}`;
+        if (isSynthetic(taskId)) {
+          reflection += ` ${taskId.startsWith('recurring-') ? 'RECURRING_TASK' : 'MULTIPLE_TASKS'}: ${taskName}`;
+        }
+        if (timeBlock === BACKLOG_TIME_BLOCK && originalTimeBlock) {
+          reflection += ` FROM:${originalTimeBlock}`;
+        }
+        createData.reflection = reflection;
+        
+        // Set task IDs only for real tasks
+        if (!isSynthetic(taskId)) {
           createData.plannedTaskId = taskId;
           createData.actualTaskId = taskId;
-        } else {
-          // For synthetic tasks, store in reflection only (no task IDs)
-          createData.reflection = (createData.reflection ? createData.reflection + ' ' : '') +
-            (taskId.startsWith('recurring-') 
-              ? `RECURRING_TASK: ${taskName}`
-              : `MULTIPLE_TASKS: ${taskName}`);
         }
         
         const response = await apiRequest("POST", "/api/daily", createData);
         
         if (response.ok) {
-          const responseData = await response.json();
           queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
           toast({
             title: "Task scheduled",
             description: timeBlock === BACKLOG_TIME_BLOCK ? "Task moved to backlog" : `Task assigned to ${timeBlock} Q${quartile}`,
           });
-        } else {
         }
       }
     } catch (error) {
@@ -1188,9 +1182,7 @@ export default function DailyWorksheet() {
 
   // Check if a task is scheduled in any quartile
   const getTaskScheduleInfo = (taskId: string) => {
-    const scheduledEntry = schedule.find((entry: any) => 
-      entry.actualTaskId === taskId || entry.plannedTaskId === taskId
-    );
+    const scheduledEntry = schedule.find((entry: any) => matchesTask(entry, taskId));
     return scheduledEntry ? {
       timeBlock: scheduledEntry.timeBlock,
       quartile: scheduledEntry.quartile
