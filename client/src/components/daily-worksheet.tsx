@@ -966,6 +966,22 @@ export default function DailyWorksheet() {
     try {
       const entry = getScheduleEntry(timeBlock, quartile);
       
+      // Check if destination quartile is occupied (except when moving to backlog)
+      if (entry && (entry.actualTaskId || entry.plannedTaskId) && timeBlock !== BACKLOG_TIME_BLOCK) {
+        // Find the task name for the existing occupant
+        const occupyingTask = tasks.find(t => 
+          t.id === entry.actualTaskId || t.id === entry.plannedTaskId
+        );
+        const occupyingTaskName = occupyingTask?.name || 'another task';
+        
+        toast({
+          title: "Cannot drop here",
+          description: `${timeBlock} Q${quartile} is already occupied by ${occupyingTaskName}. Try a different quartile or move to backlog.`,
+          variant: "destructive"
+        });
+        return;
+      }
+      
       // Find existing location of the task for both metadata and source clearing
       const existingEntry = schedule.find(e => 
         (e.actualTaskId === taskId || e.plannedTaskId === taskId)
