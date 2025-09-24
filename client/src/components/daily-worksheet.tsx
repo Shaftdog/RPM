@@ -930,6 +930,7 @@ export default function DailyWorksheet() {
       isActive: boolean;
       source: string;
       durationMinutes?: number;
+      entryId?: string; // Database entry ID for drag-and-drop
     }> = [];
     
     // 1. Add currently active/selected task if it exists and isn't a placeholder or completed
@@ -942,7 +943,8 @@ export default function DailyWorksheet() {
           name: task?.name || `Task ${entry.actualTaskId.slice(0, 8)}...`, // Fallback name if task not found
           type: 'regular',
           isActive: true,
-          source: 'active'
+          source: 'active',
+          entryId: entry.id // Add the database entry ID
         });
       } else if (entry.plannedTaskId) {
         const task = tasks.find(t => t.id === entry.plannedTaskId);
@@ -952,7 +954,8 @@ export default function DailyWorksheet() {
           name: task?.name || `Task ${entry.plannedTaskId.slice(0, 8)}...`, // Fallback name if task not found
           type: 'regular',
           isActive: true,
-          source: 'planned'
+          source: 'planned',
+          entryId: entry.id // Add the database entry ID
         });
       } else if (entry.reflection?.startsWith('RECURRING_TASK:')) {
         const taskName = entry.reflection.replace('RECURRING_TASK:', '');
@@ -961,7 +964,8 @@ export default function DailyWorksheet() {
           name: taskName,
           type: 'recurring',
           isActive: true,
-          source: 'recurring_active'
+          source: 'recurring_active',
+          entryId: entry.id // Add the database entry ID
         });
       } else if (entry.reflection?.startsWith('MULTIPLE_TASKS:')) {
         // Handle multiple tasks from AI scheduler
@@ -973,7 +977,8 @@ export default function DailyWorksheet() {
             name: taskName.trim(),
             type: 'recurring',
             isActive: true,
-            source: 'multiple_tasks'
+            source: 'multiple_tasks',
+            entryId: entry.id // Add the database entry ID - ALL multiple tasks share the same entry
           });
         });
       }
@@ -1016,6 +1021,7 @@ export default function DailyWorksheet() {
         isActive: false,
         source: 'recurring_candidate',
         durationMinutes: rt.durationMinutes
+        // No entryId - these don't have database entries yet
       });
     });
     
