@@ -56,6 +56,16 @@
   --spacing: 0.25rem;
 }
 
+/* Drag and Drop Animations */
+@keyframes slide {
+  0% {
+    background-position-x: 0px;
+  }
+  100% {
+    background-position-x: 20px;
+  }
+}
+
 .dark {
   --background: hsl(224, 71%, 4%);
   --foreground: hsl(210, 40%, 98%);

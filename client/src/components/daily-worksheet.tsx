@@ -32,7 +32,7 @@ const ItemTypes = {
   TASK: 'task',
 };
 
-// Draggable task component
+// Draggable task component with enhanced visual feedback
 function DraggableTask({ task, children }: { task: any; children: React.ReactNode }) {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: ItemTypes.TASK,
@@ -46,52 +46,111 @@ function DraggableTask({ task, children }: { task: any; children: React.ReactNod
     <div
       ref={drag}
       style={{
-        opacity: isDragging ? 0.5 : 1,
-        cursor: 'move',
+        opacity: isDragging ? 0.7 : 1,
+        transform: isDragging ? 'scale(0.95) rotate(2deg)' : 'scale(1) rotate(0deg)',
+        cursor: isDragging ? 'grabbing' : 'grab',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: isDragging ? 
+          '0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(59, 130, 246, 0.5)' : 
+          '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+        borderRadius: '6px',
+        zIndex: isDragging ? 1000 : 'auto',
       }}
+      className={isDragging ? 'ring-2 ring-blue-400 ring-opacity-50' : ''}
+      data-testid={`draggable-task-${task.id}`}
     >
       {children}
     </div>
   );
 }
 
-// Drop zone component for quartiles
+// Enhanced drop zone component for quartiles with better visual feedback
 function QuartileDropZone({ 
   children, 
   timeBlock, 
   quartile, 
-  onDrop 
+  onDrop,
+  isOccupied = false
 }: { 
   children: React.ReactNode; 
   timeBlock: string; 
   quartile: number; 
   onDrop: (taskId: string, timeBlock: string, quartile: number) => void;
+  isOccupied?: boolean;
 }) {
-  const [{ isOver }, drop] = useDrop(() => ({
+  const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: ItemTypes.TASK,
     drop: (item: { taskId: string; taskName: string }) => {
-      onDrop(item.taskId, timeBlock, quartile);
+      if (!isOccupied) {
+        onDrop(item.taskId, timeBlock, quartile);
+      }
     },
+    canDrop: () => !isOccupied,
     collect: (monitor) => ({
       isOver: monitor.isOver(),
+      canDrop: monitor.canDrop(),
     }),
   }));
+
+  // Determine visual state
+  const getDropZoneStyles = () => {
+    if (isOver && canDrop) {
+      // Valid drop zone being hovered
+      return {
+        backgroundColor: 'rgba(34, 197, 94, 0.15)',
+        border: '2px dashed rgba(34, 197, 94, 0.6)',
+        boxShadow: '0 0 20px rgba(34, 197, 94, 0.2)',
+        transform: 'scale(1.02)',
+      };
+    } else if (isOver && !canDrop) {
+      // Occupied drop zone being hovered
+      return {
+        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+        border: '2px dashed rgba(239, 68, 68, 0.6)',
+        boxShadow: '0 0 20px rgba(239, 68, 68, 0.2)',
+        transform: 'scale(0.98)',
+      };
+    } else if (isOccupied) {
+      // Occupied but not being hovered
+      return {
+        backgroundColor: 'rgba(156, 163, 175, 0.05)',
+        border: '2px dashed rgba(156, 163, 175, 0.3)',
+        boxShadow: 'none',
+        transform: 'scale(1)',
+      };
+    } else {
+      // Available drop zone
+      return {
+        backgroundColor: 'transparent',
+        border: '2px dashed transparent',
+        boxShadow: 'none',
+        transform: 'scale(1)',
+      };
+    }
+  };
 
   return (
     <div
       ref={drop}
       style={{
-        backgroundColor: isOver ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-        border: isOver ? '2px dashed rgba(59, 130, 246, 0.5)' : '2px dashed transparent',
-        transition: 'all 0.2s ease',
+        ...getDropZoneStyles(),
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        borderRadius: '8px',
+        minHeight: '60px',
+        cursor: isOver ? (canDrop ? 'copy' : 'not-allowed') : 'default',
       }}
+      data-testid={`dropzone-${timeBlock}-${quartile}`}
+      className={`
+        ${isOver && canDrop ? 'animate-pulse' : ''}
+        ${isOver && !canDrop ? 'animate-bounce' : ''}
+      `}
     >
       {children}
     </div>
   );
 }
 
-// Drop zone component for backlog
+// Enhanced drop zone component for backlog with better visual feedback
 function BacklogDropZone({ 
   children, 
   onDrop 
@@ -99,28 +158,69 @@ function BacklogDropZone({
   children: React.ReactNode; 
   onDrop: (taskId: string, timeBlock: string, quartile: number) => void;
 }) {
-  const [{ isOver }, drop] = useDrop(() => ({
+  const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: ItemTypes.TASK,
     drop: (item: { taskId: string; taskName: string }) => {
       onDrop(item.taskId, BACKLOG_TIME_BLOCK, 0);
     },
+    canDrop: () => true, // Backlog always accepts tasks
     collect: (monitor) => ({
       isOver: monitor.isOver(),
+      canDrop: monitor.canDrop(),
     }),
   }));
+
+  // Enhanced visual feedback for backlog
+  const getBacklogStyles = () => {
+    if (isOver && canDrop) {
+      return {
+        backgroundColor: 'rgba(251, 191, 36, 0.2)',
+        border: '3px dashed rgba(245, 158, 11, 0.8)',
+        boxShadow: '0 0 25px rgba(245, 158, 11, 0.3), inset 0 0 20px rgba(251, 191, 36, 0.1)',
+        transform: 'scale(1.03)',
+      };
+    } else {
+      return {
+        backgroundColor: 'rgba(251, 191, 36, 0.05)',
+        border: '2px dashed rgba(245, 158, 11, 0.3)',
+        boxShadow: 'none',
+        transform: 'scale(1)',
+      };
+    }
+  };
 
   return (
     <div
       ref={drop}
       style={{
-        backgroundColor: isOver ? 'rgba(234, 179, 8, 0.1)' : 'transparent',
-        border: isOver ? '2px dashed rgba(234, 179, 8, 0.5)' : '2px dashed transparent',
-        borderRadius: '8px',
-        transition: 'all 0.2s ease',
+        ...getBacklogStyles(),
+        borderRadius: '12px',
+        minHeight: '80px',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        cursor: isOver ? 'copy' : 'default',
+        position: 'relative',
       }}
+      className={`
+        ${isOver ? 'animate-pulse' : ''}
+        backdrop-blur-sm
+      `}
       data-testid="dropzone-backlog"
     >
-      {children}
+      {/* Animated background pattern */}
+      {isOver && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'repeating-linear-gradient(45deg, rgba(245, 158, 11, 0.1) 0px, rgba(245, 158, 11, 0.1) 10px, transparent 10px, transparent 20px)',
+            borderRadius: '12px',
+            animation: 'slide 1s infinite linear',
+          }}
+        />
+      )}
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -1424,6 +1524,7 @@ export default function DailyWorksheet() {
                         timeBlock={block.name}
                         quartile={quartile}
                         onDrop={handleTaskDrop}
+                        isOccupied={visibleTasks.length > 0}
                       >
                         <div className={`bg-card p-2 ${entry?.status === 'in_progress' ? 'border-2 border-primary' : ''}`}>
                         {/* Compact header */}
