@@ -34,10 +34,12 @@ interface DailyScheduleEntry {
 
 export default function DailyWorksheet() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [currentTime, setCurrentTime] = useState("2:30:00");
-  const [totalTime] = useState("6:45:00");
-  const [breakTimer] = useState("4:30:00");
+  const [workTimerRunning, setWorkTimerRunning] = useState(false);
+  const [breakTimerRunning, setBreakTimerRunning] = useState(false);
+  const [workTime, setWorkTime] = useState(0); // seconds
+  const [breakTime, setBreakTime] = useState(0); // seconds
+  const [totalWorkTime, setTotalWorkTime] = useState(0); // total seconds worked today
+  const [totalBreakTime, setTotalBreakTime] = useState(0); // total seconds on break today
   const baseExpenditure = -2300; // Base Metabolic Rate (constant)
   const [quickTask, setQuickTask] = useState("");
   const [aiMessage, setAiMessage] = useState("");
@@ -81,6 +83,61 @@ export default function DailyWorksheet() {
   });
   
   const { toast } = useToast();
+
+  // Timer effect for work timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (workTimerRunning) {
+      interval = setInterval(() => {
+        setWorkTime(prev => prev + 1);
+        setTotalWorkTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [workTimerRunning]);
+
+  // Timer effect for break timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (breakTimerRunning) {
+      interval = setInterval(() => {
+        setBreakTime(prev => prev + 1);
+        setTotalBreakTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [breakTimerRunning]);
+
+  // Load and save daily timer totals
+  useEffect(() => {
+    const savedTotals = localStorage.getItem(`timerTotals:${selectedDate}`);
+    if (savedTotals) {
+      try {
+        const parsed = JSON.parse(savedTotals);
+        setTotalWorkTime(parsed.totalWork || 0);
+        setTotalBreakTime(parsed.totalBreak || 0);
+      } catch (e) {
+        console.warn('Failed to load timer totals for date:', selectedDate);
+      }
+    } else {
+      setTotalWorkTime(0);
+      setTotalBreakTime(0);
+    }
+    // Reset current session times when date changes
+    setWorkTime(0);
+    setBreakTime(0);
+    setWorkTimerRunning(false);
+    setBreakTimerRunning(false);
+  }, [selectedDate]);
+
+  // Save daily timer totals to localStorage
+  useEffect(() => {
+    const totals = {
+      totalWork: totalWorkTime,
+      totalBreak: totalBreakTime
+    };
+    localStorage.setItem(`timerTotals:${selectedDate}`, JSON.stringify(totals));
+  }, [totalWorkTime, totalBreakTime, selectedDate]);
 
   // Handle task removal from schedule
   const handleRemoveTask = async (dialogData: {
@@ -511,12 +568,46 @@ export default function DailyWorksheet() {
     },
   });
 
-  const handleTimerToggle = () => {
-    setTimerRunning(!timerRunning);
+  const handleWorkTimerToggle = () => {
+    if (breakTimerRunning) {
+      setBreakTimerRunning(false);
+    }
+    
+    if (!workTimerRunning) {
+      // Starting new work session - reset current session time
+      setWorkTime(0);
+    }
+    
+    setWorkTimerRunning(!workTimerRunning);
     toast({
-      title: timerRunning ? "Timer stopped" : "Timer started",
-      description: timerRunning ? "Work session paused" : "Work session started",
+      title: workTimerRunning ? "Work timer stopped" : "Work timer started",
+      description: workTimerRunning ? "Work session paused" : "Work session started",
     });
+  };
+
+  const handleBreakTimerToggle = () => {
+    if (workTimerRunning) {
+      setWorkTimerRunning(false);
+    }
+    
+    if (!breakTimerRunning) {
+      // Starting new break session - reset current session time
+      setBreakTime(0);
+    }
+    
+    setBreakTimerRunning(!breakTimerRunning);
+    toast({
+      title: breakTimerRunning ? "Break timer stopped" : "Break timer started",
+      description: breakTimerRunning ? "Break ended" : "Break started",
+    });
+  };
+
+  // Format seconds to HH:MM:SS
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Removed handleCalorieUpdate - calories now calculated from completed tasks
@@ -792,37 +883,46 @@ export default function DailyWorksheet() {
                 />
               </div>
               <div className="text-sm">
-                <span className="text-muted-foreground">Total Time:</span>
-                <span className="font-mono font-medium ml-1" data-testid="text-total-time">{totalTime}</span>
+                <span className="text-muted-foreground">Total Work:</span>
+                <span className="font-mono font-medium ml-1" data-testid="text-total-work-time">{formatTime(totalWorkTime)}</span>
               </div>
               <div className="text-sm">
-                <span className="text-muted-foreground">Current:</span>
-                <span className="font-mono font-medium ml-1" data-testid="text-current-time">{currentTime}</span>
+                <span className="text-muted-foreground">Current Work:</span>
+                <span className="font-mono font-medium ml-1" data-testid="text-current-work-time">{formatTime(workTime)}</span>
               </div>
               <div className="text-sm">
-                <span className="text-muted-foreground">Break Timer:</span>
-                <span className="font-mono font-medium ml-1" data-testid="text-break-timer">{breakTimer}</span>
+                <span className="text-muted-foreground">Total Break:</span>
+                <span className="font-mono font-medium ml-1" data-testid="text-total-break-time">{formatTime(totalBreakTime)}</span>
+              </div>
+              <div className="text-sm">
+                <span className="text-muted-foreground">Current Break:</span>
+                <span className="font-mono font-medium ml-1" data-testid="text-current-break-time">{formatTime(breakTime)}</span>
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-muted-foreground">Net Cal:</span>
-                <span className={`font-medium min-w-[3rem] text-center ${
-                  (calculatedCaloricIntake + calculatedCaloricExpenditure + baseExpenditure) >= 0 ? 'text-green-600' : 'text-red-600'
-                }`} data-testid="text-net-calories">
-                  {calculatedCaloricIntake + calculatedCaloricExpenditure + baseExpenditure}
-                </span>
-              </div>
-              <Button onClick={handleTimerToggle} data-testid="button-timer-toggle">
-                {timerRunning ? (
+              <Button onClick={handleWorkTimerToggle} data-testid="button-work-timer-toggle" variant={workTimerRunning ? "default" : "outline"}>
+                {workTimerRunning ? (
                   <>
                     <Pause className="mr-2 h-4 w-4" />
-                    Pause Timer
+                    Pause Work
                   </>
                 ) : (
                   <>
                     <Play className="mr-2 h-4 w-4" />
-                    Start Timer
+                    Start Work
+                  </>
+                )}
+              </Button>
+              <Button onClick={handleBreakTimerToggle} data-testid="button-break-timer-toggle" variant={breakTimerRunning ? "default" : "outline"}>
+                {breakTimerRunning ? (
+                  <>
+                    <Pause className="mr-2 h-4 w-4" />
+                    End Break
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    Start Break
                   </>
                 )}
               </Button>
@@ -1262,7 +1362,7 @@ export default function DailyWorksheet() {
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Base Expenditure:</span>
-                <span className="text-sm font-medium text-red-600" data-testid="text-base-expenditure">{baseExpenditure}</span>
+                <span className="text-sm font-medium text-red-600" data-testid="text-base-expenditure">-2300</span>
               </div>
               <hr className="border-border" />
               <div className="flex justify-between font-medium">
