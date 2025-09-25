@@ -11,6 +11,7 @@ import {
   insertTaskSkipSchema,
   insertDailyScheduleSchema,
   updateDailyScheduleSchema,
+  insertTaskHierarchySchema,
   BACKLOG_TIME_BLOCK,
   TIME_BLOCKS 
 } from "@shared/schema";
@@ -213,6 +214,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting task:", error);
       res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+
+  // Task Hierarchy Routes
+  app.get('/api/tasks/:id/hierarchy', isAuthenticated, async (req: any, res) => {
+    try {
+      // Verify task ownership
+      const task = await storage.getTask(req.params.id, req.user.id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const hierarchy = await storage.getTaskHierarchy(req.params.id, req.user.id);
+      res.json(hierarchy);
+    } catch (error) {
+      console.error("Error fetching task hierarchy:", error);
+      res.status(500).json({ message: "Failed to fetch task hierarchy" });
+    }
+  });
+
+  app.post('/api/task-hierarchy', isAuthenticated, async (req: any, res) => {
+    try {
+      const hierarchyData = insertTaskHierarchySchema.parse(req.body);
+      
+      // Verify both tasks exist and belong to user
+      const parentTask = await storage.getTask(hierarchyData.parentTaskId, req.user.id);
+      const childTask = await storage.getTask(hierarchyData.childTaskId, req.user.id);
+      
+      if (!parentTask) {
+        return res.status(404).json({ message: "Parent task not found" });
+      }
+      if (!childTask) {
+        return res.status(404).json({ message: "Child task not found" });
+      }
+      
+      // Prevent self-reference
+      if (hierarchyData.parentTaskId === hierarchyData.childTaskId) {
+        return res.status(400).json({ message: "Task cannot be parent of itself" });
+      }
+      
+      const hierarchy = await storage.createTaskHierarchy(hierarchyData, req.user.id);
+      res.status(201).json(hierarchy);
+      
+      // Broadcast to WebSocket clients
+      broadcastToUser(req.user.id, { type: 'hierarchy_created', data: hierarchy });
+    } catch (error) {
+      console.error("Error creating task hierarchy:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to create task hierarchy";
+      
+      // Map specific errors to appropriate status codes
+      if (errorMessage.includes("not found or access denied")) {
+        res.status(404).json({ message: errorMessage });
+      } else if (errorMessage.includes("already exists")) {
+        res.status(409).json({ message: errorMessage });
+      } else if (errorMessage.includes("cycle")) {
+        res.status(400).json({ message: errorMessage });
+      } else {
+        res.status(400).json({ message: errorMessage });
+      }
+    }
+  });
+
+  app.delete('/api/task-hierarchy/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.deleteTaskHierarchy(req.params.id, req.user.id);
+      res.status(204).send();
+      
+      // Broadcast to WebSocket clients
+      broadcastToUser(req.user.id, { type: 'hierarchy_deleted', data: { id: req.params.id } });
+    } catch (error) {
+      console.error("Error deleting task hierarchy:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete task hierarchy";
+      
+      // Map specific errors to appropriate status codes
+      if (errorMessage.includes("not found")) {
+        res.status(404).json({ message: errorMessage });
+      } else if (errorMessage.includes("Unauthorized")) {
+        res.status(403).json({ message: errorMessage });
+      } else {
+        res.status(500).json({ message: errorMessage });
+      }
     }
   });
 

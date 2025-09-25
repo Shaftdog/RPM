@@ -377,6 +377,7 @@ export const insertTaskDependencySchema = createInsertSchema(taskDependencies).o
 
 export const insertTaskHierarchySchema = createInsertSchema(taskHierarchy).omit({
   id: true,
+  hierarchyLevel: true, // Computed server-side
   createdAt: true,
 });
 

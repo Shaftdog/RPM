@@ -81,9 +81,9 @@ export interface IStorage {
   deleteTaskDependency(id: string): Promise<void>;
 
   // Task hierarchy operations
-  getTaskHierarchy(parentTaskId: string): Promise<TaskHierarchy[]>;
-  createTaskHierarchy(hierarchy: InsertTaskHierarchy): Promise<TaskHierarchy>;
-  deleteTaskHierarchy(id: string): Promise<void>;
+  getTaskHierarchy(parentTaskId: string, userId?: string): Promise<TaskHierarchy[]>;
+  createTaskHierarchy(hierarchy: InsertTaskHierarchy, userId: string): Promise<TaskHierarchy>;
+  deleteTaskHierarchy(id: string, userId: string): Promise<void>;
 
   // Session store
   sessionStore: session.Store;
@@ -455,20 +455,138 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Task hierarchy operations
-  async getTaskHierarchy(parentTaskId: string): Promise<TaskHierarchy[]> {
-    return db.select().from(taskHierarchy).where(eq(taskHierarchy.parentTaskId, parentTaskId));
+  async getTaskHierarchy(parentTaskId: string, userId?: string): Promise<TaskHierarchy[]> {
+    if (userId) {
+      // Scope results to user by joining child tasks and filtering by user ownership
+      return db.select({
+        id: taskHierarchy.id,
+        parentTaskId: taskHierarchy.parentTaskId,
+        childTaskId: taskHierarchy.childTaskId,
+        hierarchyLevel: taskHierarchy.hierarchyLevel,
+        createdAt: taskHierarchy.createdAt
+      })
+      .from(taskHierarchy)
+      .innerJoin(tasks, eq(taskHierarchy.childTaskId, tasks.id))
+      .where(and(
+        eq(taskHierarchy.parentTaskId, parentTaskId),
+        eq(tasks.userId, userId)
+      ));
+    } else {
+      // Legacy behavior for backwards compatibility
+      return db.select().from(taskHierarchy).where(eq(taskHierarchy.parentTaskId, parentTaskId));
+    }
   }
 
-  async createTaskHierarchy(hierarchy: InsertTaskHierarchy): Promise<TaskHierarchy> {
+  async createTaskHierarchy(hierarchy: InsertTaskHierarchy, userId: string): Promise<TaskHierarchy> {
+    // Verify ownership of both parent and child tasks at storage level
+    const [parentTask, childTask] = await Promise.all([
+      db.select().from(tasks).where(and(
+        eq(tasks.id, hierarchy.parentTaskId),
+        eq(tasks.userId, userId)
+      )),
+      db.select().from(tasks).where(and(
+        eq(tasks.id, hierarchy.childTaskId),
+        eq(tasks.userId, userId)
+      ))
+    ]);
+
+    if (parentTask.length === 0) {
+      throw new Error("Parent task not found or access denied");
+    }
+    if (childTask.length === 0) {
+      throw new Error("Child task not found or access denied");
+    }
+
+    // Check for duplicate relationship
+    const existing = await db.select()
+      .from(taskHierarchy)
+      .where(and(
+        eq(taskHierarchy.parentTaskId, hierarchy.parentTaskId),
+        eq(taskHierarchy.childTaskId, hierarchy.childTaskId)
+      ));
+    
+    if (existing.length > 0) {
+      throw new Error("Hierarchy relationship already exists");
+    }
+
+    // Detect cycles by checking if child is an ancestor of parent
+    const hasChildInAncestors = await this.hasTaskInAncestors(hierarchy.parentTaskId, hierarchy.childTaskId);
+    if (hasChildInAncestors) {
+      throw new Error("Creating this relationship would create a cycle in the hierarchy");
+    }
+
+    // Compute hierarchy level based on parent's level
+    const parentLevel = await this.getTaskHierarchyLevel(hierarchy.parentTaskId);
+    const computedHierarchy = {
+      ...hierarchy,
+      hierarchyLevel: parentLevel + 1
+    };
+
     const [newHierarchy] = await db
       .insert(taskHierarchy)
-      .values(hierarchy)
+      .values(computedHierarchy)
       .returning();
     return newHierarchy;
   }
 
-  async deleteTaskHierarchy(id: string): Promise<void> {
+  async deleteTaskHierarchy(id: string, userId: string): Promise<void> {
+    // Get hierarchy details with task ownership verification
+    const hierarchyWithTasks = await db.select({
+      hierarchy: taskHierarchy,
+      parentTask: tasks,
+      childTask: {
+        id: sql`child_task.id`.as('child_task_id'),
+        userId: sql`child_task.user_id`.as('child_task_user_id')
+      }
+    })
+    .from(taskHierarchy)
+    .innerJoin(tasks, eq(taskHierarchy.parentTaskId, tasks.id))
+    .innerJoin(sql`tasks as child_task`, sql`task_hierarchy.child_task_id = child_task.id`)
+    .where(eq(taskHierarchy.id, id));
+
+    if (hierarchyWithTasks.length === 0) {
+      throw new Error("Hierarchy relationship not found");
+    }
+
+    const record = hierarchyWithTasks[0];
+    
+    // Verify both parent and child belong to the user
+    if (record.parentTask.userId !== userId || record.childTask.userId !== userId) {
+      throw new Error("Unauthorized: Cannot delete hierarchy for tasks you don't own");
+    }
+
     await db.delete(taskHierarchy).where(eq(taskHierarchy.id, id));
+  }
+
+  // Helper method to check if a task is an ancestor of another task
+  private async hasTaskInAncestors(taskId: string, potentialAncestorId: string): Promise<boolean> {
+    if (taskId === potentialAncestorId) return true;
+    
+    const parents = await db.select()
+      .from(taskHierarchy)
+      .where(eq(taskHierarchy.childTaskId, taskId));
+    
+    for (const parent of parents) {
+      const hasAncestor = await this.hasTaskInAncestors(parent.parentTaskId, potentialAncestorId);
+      if (hasAncestor) return true;
+    }
+    
+    return false;
+  }
+
+  // Helper method to get task hierarchy level (0 = root, 1 = child, etc.)
+  private async getTaskHierarchyLevel(taskId: string): Promise<number> {
+    const parentRelations = await db.select()
+      .from(taskHierarchy)
+      .where(eq(taskHierarchy.childTaskId, taskId));
+    
+    if (parentRelations.length === 0) {
+      return 0; // Root level task
+    }
+    
+    // Assuming single parent (tree structure)
+    const parentLevel = await this.getTaskHierarchyLevel(parentRelations[0].parentTaskId);
+    return parentLevel + 1;
   }
 }
 
