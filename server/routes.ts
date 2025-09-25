@@ -325,6 +325,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Task Tree Structure Routes
+  app.get('/api/tasks/tree', isAuthenticated, async (req: any, res) => {
+    try {
+      const tree = await storage.getTaskTree(req.user.id);
+      
+      // Convert Maps to Objects for JSON serialization
+      const response = {
+        tasks: Object.fromEntries(tree.tasks),
+        children: Object.fromEntries(tree.children),
+        parents: Object.fromEntries(tree.parents),
+        roots: tree.roots,
+        leaves: tree.leaves
+      };
+      
+      res.json(response);
+    } catch (error) {
+      console.error("Error fetching task tree:", error);
+      res.status(500).json({ message: "Failed to fetch task tree" });
+    }
+  });
+
+  app.get('/api/tasks/:id/path', isAuthenticated, async (req: any, res) => {
+    try {
+      const path = await storage.getTaskPath(req.params.id, req.user.id);
+      res.json({ path });
+    } catch (error) {
+      console.error("Error fetching task path:", error);
+      res.status(500).json({ message: "Failed to fetch task path" });
+    }
+  });
+
+  app.get('/api/tasks/:id/ancestors', isAuthenticated, async (req: any, res) => {
+    try {
+      const ancestors = await storage.getTaskAncestors(req.params.id, req.user.id);
+      res.json(ancestors);
+    } catch (error) {
+      console.error("Error fetching task ancestors:", error);
+      res.status(500).json({ message: "Failed to fetch task ancestors" });
+    }
+  });
+
+  app.get('/api/tasks/:id/descendants', isAuthenticated, async (req: any, res) => {
+    try {
+      const descendants = await storage.getTaskDescendants(req.params.id, req.user.id);
+      res.json(descendants);
+    } catch (error) {
+      console.error("Error fetching task descendants:", error);
+      res.status(500).json({ message: "Failed to fetch task descendants" });
+    }
+  });
+
+  app.get('/api/tasks/:id/siblings', isAuthenticated, async (req: any, res) => {
+    try {
+      const siblings = await storage.getTaskSiblings(req.params.id, req.user.id);
+      res.json(siblings);
+    } catch (error) {
+      console.error("Error fetching task siblings:", error);
+      res.status(500).json({ message: "Failed to fetch task siblings" });
+    }
+  });
+
   // Planning Matrix Routes
   app.get('/api/planning/matrix', isAuthenticated, async (req: any, res) => {
     try {

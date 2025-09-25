@@ -103,6 +103,19 @@ export interface IStorage {
     children?: any[];
   }>>;
 
+  // Hierarchical tree structure operations
+  getTaskTree(userId: string): Promise<{
+    tasks: Map<string, Task>;
+    children: Map<string, string[]>;
+    parents: Map<string, string>;
+    roots: string[];
+    leaves: string[];
+  }>;
+  getTaskPath(taskId: string, userId: string): Promise<string[]>;
+  getTaskAncestors(taskId: string, userId: string): Promise<Task[]>;
+  getTaskDescendants(taskId: string, userId: string): Promise<Task[]>;
+  getTaskSiblings(taskId: string, userId: string): Promise<Task[]>;
+
   // Session store
   sessionStore: session.Store;
 }
@@ -783,6 +796,117 @@ export class DatabaseStorage implements IStorage {
       ...task,
       ...calculateRollupsFromMap(task.id)
     }));
+  }
+
+  // Build hierarchical tree structure for efficient UI navigation
+  async getTaskTree(userId: string): Promise<{
+    tasks: Map<string, Task>;
+    children: Map<string, string[]>;
+    parents: Map<string, string>;
+    roots: string[];
+    leaves: string[];
+  }> {
+    // Get all user tasks and hierarchies
+    const [allTasks, allHierarchies] = await Promise.all([
+      this.getTasks(userId),
+      db.select().from(taskHierarchy)
+        .innerJoin(tasks, eq(taskHierarchy.childTaskId, tasks.id))
+        .where(eq(tasks.userId, userId))
+    ]);
+
+    // Build core data structures
+    const taskMap = new Map(allTasks.map(task => [task.id, task]));
+    const childrenMap = new Map<string, string[]>();
+    const parentMap = new Map<string, string>();
+
+    // Populate relationships
+    for (const hierarchy of allHierarchies) {
+      const parentId = hierarchy.task_hierarchy.parentTaskId;
+      const childId = hierarchy.task_hierarchy.childTaskId;
+      
+      if (!childrenMap.has(parentId)) {
+        childrenMap.set(parentId, []);
+      }
+      childrenMap.get(parentId)!.push(childId);
+      parentMap.set(childId, parentId);
+    }
+
+    // Identify roots (tasks with no parents) and leaves (tasks with no children)
+    const roots = allTasks
+      .filter(task => !parentMap.has(task.id))
+      .map(task => task.id);
+    
+    const leaves = allTasks
+      .filter(task => !childrenMap.has(task.id) || childrenMap.get(task.id)!.length === 0)
+      .map(task => task.id);
+
+    return {
+      tasks: taskMap,
+      children: childrenMap,
+      parents: parentMap,
+      roots,
+      leaves
+    };
+  }
+
+  // Helper methods for tree navigation
+  async getTaskPath(taskId: string, userId: string): Promise<string[]> {
+    const tree = await this.getTaskTree(userId);
+    const path: string[] = [];
+    let currentId = taskId;
+    
+    while (currentId && tree.tasks.has(currentId)) {
+      path.unshift(currentId);
+      currentId = tree.parents.get(currentId) || '';
+    }
+    
+    return path;
+  }
+
+  async getTaskAncestors(taskId: string, userId: string): Promise<Task[]> {
+    const tree = await this.getTaskTree(userId);
+    const ancestors: Task[] = [];
+    let currentId = tree.parents.get(taskId);
+    
+    while (currentId && tree.tasks.has(currentId)) {
+      const task = tree.tasks.get(currentId);
+      if (task) ancestors.push(task);
+      currentId = tree.parents.get(currentId);
+    }
+    
+    return ancestors;
+  }
+
+  async getTaskDescendants(taskId: string, userId: string): Promise<Task[]> {
+    const tree = await this.getTaskTree(userId);
+    const descendants: Task[] = [];
+    
+    const collectDescendants = (id: string) => {
+      const children = tree.children.get(id) || [];
+      for (const childId of children) {
+        const task = tree.tasks.get(childId);
+        if (task) {
+          descendants.push(task);
+          collectDescendants(childId); // Recursively collect descendants
+        }
+      }
+    };
+    
+    collectDescendants(taskId);
+    return descendants;
+  }
+
+  async getTaskSiblings(taskId: string, userId: string): Promise<Task[]> {
+    const tree = await this.getTaskTree(userId);
+    const parentId = tree.parents.get(taskId);
+    
+    if (!parentId) return []; // Root tasks have no siblings
+    
+    const siblings = tree.children.get(parentId) || [];
+    return siblings
+      .filter(siblingId => siblingId !== taskId)
+      .map(siblingId => tree.tasks.get(siblingId))
+      .filter(Boolean) as Task[];
   }
 }
 
