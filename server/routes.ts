@@ -865,11 +865,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         energyPatterns: {}
       };
       
-      // Filter out Milestones and Sub-Milestones from scheduling
-      // These are deliverables, not actionable tasks that should be time-blocked
-      const tasksForScheduling = tasks.filter(task => 
-        task.type !== 'Milestone' && task.type !== 'Sub-Milestone'
-      );
+      // Filter out parent tasks using hierarchy validation (comprehensive leaf-only filtering)
+      const taskTree = await storage.getTaskTree(req.user.id);
+      const tasksForScheduling = tasks.filter(task => {
+        // Exclude Milestones and Sub-Milestones (legacy type-based filtering)
+        if (task.type === 'Milestone' || task.type === 'Sub-Milestone') {
+          return false;
+        }
+        // Exclude any task that has children (hierarchy-based leaf-only filtering)
+        const children = taskTree?.children?.get(task.id) || [];
+        const hasChildren = Array.isArray(children) ? children.length > 0 : false;
+        return !hasChildren;
+      });
 
       console.time('generate_schedule');
       // Pass empty array for recurring tasks since they're handled by "Sync to Daily"
@@ -912,11 +919,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create individual daily schedule entry
   app.post('/api/daily', isAuthenticated, async (req: any, res) => {
     try {
-      const scheduleData = insertDailyScheduleSchema.parse({
+      const parsedData = {
         ...req.body,
         userId: req.user.id,
         date: new Date(req.body.xDate || req.body.date)
-      });
+      };
+      
+      // LEAF-ONLY SCHEDULING VALIDATION: Prevent scheduling parent tasks
+      const taskIdsToValidate = [];
+      if (parsedData.plannedTaskId) taskIdsToValidate.push(parsedData.plannedTaskId);
+      if (parsedData.actualTaskId) taskIdsToValidate.push(parsedData.actualTaskId);
+      
+      if (taskIdsToValidate.length > 0) {
+        // Get task hierarchy once per request for efficiency
+        const taskTree = await storage.getTaskTree(req.user.id);
+        
+        for (const taskId of taskIdsToValidate) {
+          // Verify task exists and belongs to user (ownership validation)
+          const task = await storage.getTask(taskId, req.user.id);
+          if (!task) {
+            return res.status(404).json({ message: `Task not found or access denied: ${taskId}` });
+          }
+          
+          // Check if this task has children (hierarchy validation)
+          const children = taskTree?.children?.get(taskId) || [];
+          const hasChildren = Array.isArray(children) ? children.length > 0 : false;
+          if (hasChildren) {
+            return res.status(400).json({ 
+              message: `Cannot schedule parent task "${task.name}". Only leaf tasks (tasks without children) can be scheduled. Please schedule the individual subtasks instead.` 
+            });
+          }
+        }
+      }
+      
+      const scheduleData = insertDailyScheduleSchema.parse(parsedData);
       const entry = await storage.createDailyScheduleEntry({
         ...scheduleData,
         userId: req.user.id
@@ -956,6 +992,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         endTime: existingEntry.endTime,
         ...updates
       };
+      
+      // LEAF-ONLY SCHEDULING VALIDATION: Prevent scheduling parent tasks
+      const taskIdsToValidate = [];
+      if (mergedData.plannedTaskId) taskIdsToValidate.push(mergedData.plannedTaskId);
+      if (mergedData.actualTaskId) taskIdsToValidate.push(mergedData.actualTaskId);
+      
+      if (taskIdsToValidate.length > 0) {
+        // Get task hierarchy once per request for efficiency
+        const taskTree = await storage.getTaskTree(req.user.id);
+        
+        for (const taskId of taskIdsToValidate) {
+          // Verify task exists and belongs to user (ownership validation)
+          const task = await storage.getTask(taskId, req.user.id);
+          if (!task) {
+            return res.status(404).json({ message: `Task not found or access denied: ${taskId}` });
+          }
+          
+          // Check if this task has children (hierarchy validation)
+          const children = taskTree?.children?.get(taskId) || [];
+          const hasChildren = Array.isArray(children) ? children.length > 0 : false;
+          if (hasChildren) {
+            return res.status(400).json({ 
+              message: `Cannot schedule parent task "${task.name}". Only leaf tasks (tasks without children) can be scheduled. Please schedule the individual subtasks instead.` 
+            });
+          }
+        }
+      }
       
       // Validate the merged data using full schema validation
       const scheduleData = insertDailyScheduleSchema.parse(mergedData);

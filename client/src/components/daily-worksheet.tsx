@@ -32,8 +32,11 @@ const ItemTypes = {
   TASK: 'task',
 };
 
-// Draggable task component with enhanced visual feedback
-function DraggableTask({ task, children }: { task: any; children: React.ReactNode }) {
+// Draggable task component with enhanced visual feedback and leaf-only scheduling
+function DraggableTask({ task, children, taskTree }: { task: any; children: React.ReactNode; taskTree?: any }) {
+  // Check if this task has children (making it non-draggable)
+  const hasChildren = taskTree?.children[task.id]?.length > 0;
+  
   const [{ isDragging }, drag] = useDrag(() => ({
     type: ItemTypes.TASK,
     item: { 
@@ -41,31 +44,81 @@ function DraggableTask({ task, children }: { task: any; children: React.ReactNod
       taskId: task.id, 
       taskName: task.name,
       sourceTimeBlock: task.timeBlock,
-      sourceQuartile: task.quartile
+      sourceQuartile: task.quartile,
+      hasChildren
     },
+    canDrag: taskTree ? !hasChildren : false, // Prevent dragging parent tasks AND wait for tree data
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
   }));
 
+  // Different styles for non-draggable parent tasks and loading states
+  const getTaskStyles = () => {
+    if (!taskTree) {
+      // Loading state - prevent interaction until tree data arrives
+      return {
+        opacity: 0.5,
+        cursor: 'wait',
+        backgroundColor: 'rgba(156, 163, 175, 0.05)',
+        border: '2px dashed rgba(156, 163, 175, 0.2)',
+        borderRadius: '6px',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+      };
+    }
+    
+    if (hasChildren) {
+      return {
+        opacity: 0.6,
+        cursor: 'not-allowed',
+        backgroundColor: 'rgba(156, 163, 175, 0.1)',
+        border: '2px dashed rgba(156, 163, 175, 0.4)',
+        borderRadius: '6px',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+      };
+    }
+    
+    return {
+      opacity: isDragging ? 0.7 : 1,
+      transform: isDragging ? 'scale(0.95) rotate(2deg)' : 'scale(1) rotate(0deg)',
+      cursor: isDragging ? 'grabbing' : 'grab',
+      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+      boxShadow: isDragging ? 
+        '0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(59, 130, 246, 0.5)' : 
+        '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+      borderRadius: '6px',
+      zIndex: isDragging ? 1000 : 'auto',
+    };
+  };
+
   return (
     <div
-      ref={drag}
-      style={{
-        opacity: isDragging ? 0.7 : 1,
-        transform: isDragging ? 'scale(0.95) rotate(2deg)' : 'scale(1) rotate(0deg)',
-        cursor: isDragging ? 'grabbing' : 'grab',
-        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-        boxShadow: isDragging ? 
-          '0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(59, 130, 246, 0.5)' : 
-          '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
-        borderRadius: '6px',
-        zIndex: isDragging ? 1000 : 'auto',
-      }}
-      className={isDragging ? 'ring-2 ring-blue-400 ring-opacity-50' : ''}
+      ref={taskTree && !hasChildren ? drag : undefined}
+      style={getTaskStyles()}
+      className={`
+        relative
+        ${isDragging ? 'ring-2 ring-blue-400 ring-opacity-50' : ''}
+        ${hasChildren ? 'ring-2 ring-gray-400 ring-opacity-30' : ''}
+        ${!taskTree ? 'ring-2 ring-blue-400 ring-opacity-20' : ''}
+      `}
       data-testid={`draggable-task-${task.id}`}
+      title={
+        !taskTree ? 'Loading hierarchy data...' :
+        hasChildren ? 'Cannot schedule parent tasks - only leaf tasks can be scheduled' : 
+        undefined
+      }
     >
       {children}
+      {!taskTree && (
+        <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 py-0.5 rounded-full">
+          Loading
+        </div>
+      )}
+      {taskTree && hasChildren && (
+        <div className="absolute top-1 right-1 bg-yellow-500 text-white text-xs px-1 py-0.5 rounded-full">
+          Parent
+        </div>
+      )}
     </div>
   );
 }
@@ -76,13 +129,15 @@ function QuartileDropZone({
   timeBlock, 
   quartile, 
   onDrop,
-  isOccupied = false
+  isOccupied = false,
+  taskTree
 }: { 
   children: React.ReactNode; 
   timeBlock: string; 
   quartile: number; 
   onDrop: (item: any, timeBlock: string, quartile: number) => void;
   isOccupied?: boolean;
+  taskTree?: any;
 }) {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: ItemTypes.TASK,
@@ -91,7 +146,12 @@ function QuartileDropZone({
         onDrop(item, timeBlock, quartile);
       }
     },
-    canDrop: () => !isOccupied,
+    canDrop: (item, monitor) => {
+      if (isOccupied) return false;
+      // Drop-time revalidation: always check current taskTree state
+      const currentHasChildren = taskTree?.children[item.taskId]?.length > 0;
+      return !currentHasChildren;
+    },
     collect: (monitor) => ({
       isOver: monitor.isOver(),
       canDrop: monitor.canDrop(),
@@ -159,17 +219,23 @@ function QuartileDropZone({
 // Enhanced drop zone component for backlog with better visual feedback
 function BacklogDropZone({ 
   children, 
-  onDrop 
+  onDrop,
+  taskTree
 }: { 
   children: React.ReactNode; 
   onDrop: (item: any, timeBlock: string, quartile: number) => void;
+  taskTree?: any;
 }) {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: ItemTypes.TASK,
     drop: (item: any) => {
       onDrop(item, BACKLOG_TIME_BLOCK, 0);
     },
-    canDrop: () => true, // Backlog always accepts tasks
+    canDrop: (item, monitor) => {
+      // Drop-time revalidation: always check current taskTree state
+      const currentHasChildren = taskTree?.children[item.taskId]?.length > 0;
+      return !currentHasChildren;
+    },
     collect: (monitor) => ({
       isOver: monitor.isOver(),
       canDrop: monitor.canDrop(),
@@ -535,6 +601,11 @@ export default function DailyWorksheet() {
     queryKey: ['/api/tasks'],
   });
 
+  // Fetch hierarchy tree for leaf-only scheduling
+  const { data: taskTree } = useQuery<{ children: Record<string, string[]>; parents: Record<string, string[]>; tasks: Record<string, any>; roots: string[]; leaves: string[] }>({
+    queryKey: ['/api/tasks/tree'],
+  });
+
   // Fetch recurring tasks for display
   const { data: recurringTasks = [] } = useQuery<any[]>({
     queryKey: ['/api/recurring-tasks'],
@@ -610,6 +681,7 @@ export default function DailyWorksheet() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/tree'] }); // Invalidate tree for hierarchy changes
     },
     onError: (error) => {
       toast({
@@ -630,6 +702,7 @@ export default function DailyWorksheet() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/tree'] }); // Invalidate tree for hierarchy changes
       toast({
         title: "Task deleted",
         description: "Task has been removed from your schedule",
@@ -754,6 +827,7 @@ export default function DailyWorksheet() {
         queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
         queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
         queryClient.invalidateQueries({ queryKey: ['/api/daily'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/tasks/tree'] }); // Invalidate tree for hierarchy changes
         
         if (result.success) {
           toast({
@@ -1200,6 +1274,17 @@ export default function DailyWorksheet() {
         return;
       }
       
+      // Drop-time revalidation: Check if task has children using current taskTree state
+      const currentHasChildren = !!(taskTree && taskTree.children && taskTree.children[taskId] && taskTree.children[taskId].length > 0);
+      if (currentHasChildren) {
+        toast({
+          title: "Cannot schedule parent task",
+          description: "Only leaf tasks (tasks without children) can be scheduled. Please schedule the individual subtasks instead.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       // Check if destination quartile is occupied (except when moving to backlog)
       if (timeBlock !== BACKLOG_TIME_BLOCK) {
         const destinationEntry = getScheduleEntry(timeBlock, quartile);
@@ -1417,7 +1502,7 @@ export default function DailyWorksheet() {
                                 (e.actualTaskId === task.id || e.plannedTaskId === task.id) &&
                                 e.timeBlock !== BACKLOG_TIME_BLOCK
                               )?.id
-                            }}>
+                            }} taskTree={taskTree}>
                               <div
                                 className="flex items-center gap-3 p-3 rounded-lg border bg-card/50 hover:bg-card/80 transition-colors"
                                 data-testid={`row-today-task-${task.id}`}
@@ -1528,7 +1613,7 @@ export default function DailyWorksheet() {
                       Tasks moved to backlog that you still want to complete today
                     </p>
                   </div>
-                  <BacklogDropZone onDrop={handleTaskDrop}>
+                  <BacklogDropZone onDrop={handleTaskDrop} taskTree={taskTree}>
                     <div className="border rounded-lg p-4 min-h-[200px] bg-muted/20">
                       {(() => {
                         const backlogTasks = getBacklogTasks();
@@ -1560,7 +1645,7 @@ export default function DailyWorksheet() {
                                   entryId: task.entryId,
                                   timeBlock: BACKLOG_TIME_BLOCK,
                                   quartile: 0
-                                }}>
+                                }} taskTree={taskTree}>
                                   <div
                                     className="flex items-center gap-3 p-3 mb-2 rounded-lg border bg-card hover:bg-card/80 transition-colors"
                                     data-testid={`row-backlog-task-${task.id}`}
@@ -1731,6 +1816,7 @@ export default function DailyWorksheet() {
                         quartile={quartile}
                         onDrop={handleTaskDrop}
                         isOccupied={visibleTasks.length > 0}
+                        taskTree={taskTree}
                       >
                         <div className={`bg-card p-2 ${entry?.status === 'in_progress' ? 'border-2 border-primary' : ''}`}>
                         {/* Compact header */}
@@ -1816,7 +1902,7 @@ export default function DailyWorksheet() {
                                     entryId: taskEntry?.id,
                                     timeBlock: block.name,
                                     quartile
-                                  }}>
+                                  }} taskTree={taskTree}>
                                     <div
                                       className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover:bg-secondary/50 ${
                                         task.isActive ? 'bg-primary/10 border border-primary/20' : ''
