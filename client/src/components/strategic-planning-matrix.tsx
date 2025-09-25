@@ -34,7 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon, Trash2 } from "lucide-react";
+import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon, Trash2, ChevronDown, ChevronRight, TreePine, Folder, FolderOpen } from "lucide-react";
 import { format, isPast, isToday, isTomorrow, formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +55,21 @@ interface Task {
   description?: string;
   dueDate?: string | null;
   xDate?: string | null;
+  // Rollup properties from backend
+  rolledUpProgress?: number;
+  rolledUpStatus?: string;
+  rolledUpEstimatedTime?: number;
+  rolledUpActualTime?: number;
+  isLeaf?: boolean;
+  children?: any[];
+}
+
+interface TaskTree {
+  tasks: Record<string, Task>;
+  children: Record<string, string[]>;
+  parents: Record<string, string>;
+  roots: string[];
+  leaves: string[];
 }
 
 export default function StrategicPlanningMatrix() {
@@ -64,10 +79,18 @@ export default function StrategicPlanningMatrix() {
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState<Task | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [showSubtasks, setShowSubtasks] = useState(true);
   const { toast } = useToast();
 
+  // Fetch tasks with rollup calculations
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
-    queryKey: ['/api/tasks'],
+    queryKey: ['/api/tasks/rollups'],
+  });
+
+  // Fetch tree structure for hierarchical display
+  const { data: taskTree, isLoading: isTreeLoading } = useQuery<TaskTree>({
+    queryKey: ['/api/tasks/tree'],
   });
 
   const moveTaskMutation = useMutation({
@@ -91,7 +114,8 @@ export default function StrategicPlanningMatrix() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/rollups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/tree'] });
       toast({
         title: "Task moved successfully",
         description: "The task has been repositioned in your planning matrix",
@@ -141,7 +165,8 @@ export default function StrategicPlanningMatrix() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/rollups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/tree'] });
       toast({
         title: "Task updated successfully!",
         description: "Your changes have been saved.",
@@ -164,7 +189,8 @@ export default function StrategicPlanningMatrix() {
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/rollups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/tree'] });
       toast({
         title: "Task deleted successfully!",
         description: "The task has been removed.",
@@ -288,6 +314,226 @@ export default function StrategicPlanningMatrix() {
     setAiCommand("");
   };
 
+  // Tree manipulation helpers
+  const toggleTaskExpansion = (taskId: string) => {
+    const newExpanded = new Set(expandedTasks);
+    if (newExpanded.has(taskId)) {
+      newExpanded.delete(taskId);
+    } else {
+      newExpanded.add(taskId);
+    }
+    setExpandedTasks(newExpanded);
+  };
+
+  const toggleShowSubtasks = () => {
+    setShowSubtasks(!showSubtasks);
+  };
+
+  // Helper function to determine effective cell for a task
+  const getTaskCell = (task: Task): { horizon: string; category: string } => {
+    let taskHorizon = task.timeHorizon === '1 Year' ? '1 Year' : 
+                      task.timeHorizon === '5 Year' ? '5 Year' : 
+                      task.timeHorizon === '10 Year' ? '10 Year' : 
+                      task.timeHorizon || 'BACKLOG';
+    const taskCategory = task.subcategory || 'Mental';
+    
+    if (taskHorizon === 'Today') {
+      if (!task.xDate || !isToday(new Date(task.xDate))) {
+        taskHorizon = 'BACKLOG';
+      }
+    }
+    
+    return { horizon: taskHorizon, category: taskCategory };
+  };
+
+  // Build hierarchical task list for a given cell
+  const buildHierarchicalTasksForCell = (horizon: string, category: string): { 
+    rootTasks: Task[], 
+    cellTaskIds: Set<string> 
+  } => {
+    console.log(`buildHierarchicalTasksForCell: ${horizon}-${category}, showSubtasks=${showSubtasks}, hasTree=${!!taskTree}`);
+    
+    // Get all tasks that belong to this cell
+    const cellTasks = tasks.filter(task => {
+      const { horizon: taskHorizon, category: taskCategory } = getTaskCell(task);
+      return taskHorizon === horizon && taskCategory === category && 
+             task.status !== 'completed' && 
+             !(task.description && task.description.startsWith('Recurring: '));
+    });
+
+    const cellTaskIds = new Set(cellTasks.map(t => t.id));
+
+    if (!showSubtasks) {
+      // When subtasks are hidden, show only ROOT tasks (tasks without parents in this cell)
+      if (!taskTree) {
+        console.log(`No tree data, showing all ${cellTasks.length} tasks for ${horizon}-${category}`);
+        return { rootTasks: cellTasks, cellTaskIds };
+      }
+
+      // Filter to only root tasks (no parents in this cell)
+      const rootTasks = cellTasks.filter(task => {
+        const parentId = taskTree.parents[task.id];
+        return !parentId || !cellTaskIds.has(parentId);
+      });
+      
+      console.log(`Hiding subtasks: showing ${rootTasks.length} root tasks out of ${cellTasks.length} total for ${horizon}-${category}`);
+      return { rootTasks, cellTaskIds };
+    }
+
+    if (!taskTree) {
+      console.log("No taskTree available, treating all tasks as roots");
+      return { rootTasks: cellTasks, cellTaskIds };
+    }
+
+    console.log(`taskTree children keys:`, Object.keys(taskTree.children).length);
+    console.log(`taskTree parents keys:`, Object.keys(taskTree.parents).length);
+    console.log(`Cell tasks:`, cellTasks.map(t => `${t.id}:${t.name}`));
+    
+    // Find root tasks in this cell (tasks with no parents OR parents not in this cell)
+    const rootTasks: Task[] = [];
+    for (const task of cellTasks) {
+      const parentId = taskTree.parents[task.id];
+      console.log(`Task ${task.id} (${task.name}) has parent: ${parentId}`);
+      if (!parentId || !cellTaskIds.has(parentId)) {
+        rootTasks.push(task);
+        console.log(`Added root task: ${task.name}`);
+      }
+    }
+
+    console.log(`Hierarchical tasks for ${horizon}-${category}:`, rootTasks.length);
+    return { rootTasks, cellTaskIds };
+  };
+
+  // Render hierarchical task tree recursively (only children within the same cell)
+  const renderTaskHierarchy = (
+    task: Task, 
+    depth: number = 0, 
+    horizon: string, 
+    category: string, 
+    cellTaskIds: Set<string>
+  ): React.ReactNode[] => {
+    if (!taskTree) {
+      console.log("renderTaskHierarchy: No taskTree available");
+      return [];
+    }
+
+    const elements: React.ReactNode[] = [];
+    const isPersonal = categories.indexOf(category) < 6;
+    
+    // Only count children that are in the same cell
+    const childrenInCell = (taskTree.children[task.id] || []).filter(childId => cellTaskIds.has(childId));
+    const hasChildrenInCell = childrenInCell.length > 0;
+    const isExpanded = expandedTasks.has(task.id);
+    
+    console.log(`Rendering task ${task.id} (${task.name}): hasChildrenInCell=${hasChildrenInCell}, childrenInCell=${childrenInCell.length}, allChildren=${taskTree.children[task.id]?.length || 0}, depth=${depth}`);
+    
+    // Render current task
+    elements.push(
+      <div
+        key={task.id}
+        draggable
+        onDragStart={(e) => handleDragStart(e, task)}
+        onClick={(e) => handleTaskClick(e, task)}
+        className={cn(
+          `p-2 rounded text-xs cursor-pointer border-l-4 relative`,
+          horizon === 'BACKLOG'
+            ? 'bg-muted border-muted-foreground'
+            : isPersonal
+            ? `bg-personal/20 border-personal ${horizon === 'Today' ? 'bg-personal/30' : ''}`
+            : `bg-business/20 border-business ${horizon === 'Today' ? 'bg-business/30' : ''}`,
+          'hover:opacity-80 transition-opacity',
+          depth > 0 && 'ml-4 border-l-2 border-dashed border-muted-foreground/30'
+        )}
+        style={{ marginLeft: `${depth * 16}px` }}
+        data-testid={`task-card-${task.id}`}
+      >
+        {/* Hierarchical controls */}
+        <div className="flex items-start space-x-1">
+          {hasChildrenInCell && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleTaskExpansion(task.id);
+              }}
+              className="flex-shrink-0 mt-0.5 p-0.5 hover:bg-black/10 rounded"
+              data-testid={`button-expand-${task.id}`}
+            >
+              {isExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+            </button>
+          )}
+          {!hasChildrenInCell && depth > 0 && (
+            <div className="w-4 h-3 flex-shrink-0 mt-0.5" />
+          )}
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center space-x-1">
+              {hasChildrenInCell && (
+                isExpanded ? (
+                  <FolderOpen className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                ) : (
+                  <Folder className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                )
+              )}
+              <div className="font-medium truncate">{task.name}</div>
+            </div>
+            
+            <div className={cn(
+              "text-xs mt-1",
+              horizon === 'BACKLOG' 
+                ? 'text-muted-foreground'
+                : isPersonal ? 'text-personal' : 'text-business'
+            )}>
+              {task.type} • {hasChildrenInCell ? task.rolledUpEstimatedTime || task.estimatedTime : task.estimatedTime}h • {task.priority}
+              {task.rolledUpProgress !== undefined ? ` • ${task.rolledUpProgress}%` : 
+               task.progress > 0 ? ` • ${task.progress}%` : ''}
+            </div>
+
+            {/* Date information */}
+            {task.xDate && (
+              <div className="text-xs mt-1 text-blue-600 font-medium">
+                Work: {format(new Date(task.xDate), "MMM dd")}
+              </div>
+            )}
+            {task.dueDate && (
+              <div className={cn(
+                "text-xs mt-1",
+                isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && "text-red-500 font-semibold",
+                isToday(new Date(task.dueDate)) && "text-orange-500 font-semibold",
+                isTomorrow(new Date(task.dueDate)) && "text-blue-500"
+              )}>
+                {isToday(new Date(task.dueDate))
+                  ? "Due Today"
+                  : isTomorrow(new Date(task.dueDate))
+                  ? "Due Tomorrow"
+                  : isPast(new Date(task.dueDate))
+                  ? `Overdue`
+                  : `Due ${format(new Date(task.dueDate), "MMM dd")}`}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+
+    // Render children if expanded (only children that belong to this cell)
+    if (hasChildrenInCell && isExpanded) {
+      for (const childId of childrenInCell) {
+        const childTask = taskTree.tasks[childId];
+        if (childTask && 
+            childTask.status !== 'completed' && 
+            !(childTask.description && childTask.description.startsWith('Recurring: '))) {
+          elements.push(...renderTaskHierarchy(childTask, depth + 1, horizon, category, cellTaskIds));
+        }
+      }
+    }
+
+    return elements;
+  };
+
   const getTaskStats = () => {
     const total = tasks.length;
     const completed = tasks.filter(t => t.status === 'completed').length;
@@ -305,7 +551,7 @@ export default function StrategicPlanningMatrix() {
 
   const stats = getTaskStats();
 
-  if (isLoading) {
+  if (isLoading || isTreeLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
@@ -322,10 +568,27 @@ export default function StrategicPlanningMatrix() {
       <div className="flex-1">
         <Card>
           <CardHeader>
-            <CardTitle>Strategic Planning Matrix</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Drag tasks between time horizons and categories
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center space-x-2">
+                  <TreePine className="h-5 w-5" />
+                  <span>Strategic Planning Matrix</span>
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Drag tasks between time horizons and categories
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleShowSubtasks}
+                className="flex items-center space-x-2"
+                data-testid="button-toggle-subtasks"
+              >
+                {showSubtasks ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
+                <span>{showSubtasks ? 'Hide Subtasks' : 'Show Subtasks'}</span>
+              </Button>
+            </div>
           </CardHeader>
           
           <CardContent>
@@ -355,7 +618,7 @@ export default function StrategicPlanningMatrix() {
                         {horizon}
                       </td>
                       {categories.map(category => {
-                        const cellTasks = matrix[horizon][category];
+                        const { rootTasks, cellTaskIds } = buildHierarchicalTasksForCell(horizon, category);
                         const isPersonal = categories.indexOf(category) < 6;
                         
                         return (
@@ -372,54 +635,66 @@ export default function StrategicPlanningMatrix() {
                             onDragOver={handleDragOver}
                             data-testid={`cell-${horizon}-${category}`}
                           >
-                            <div className="space-y-2">
-                              {cellTasks.map(task => (
-                                <div
-                                  key={task.id}
-                                  draggable
-                                  onDragStart={(e) => handleDragStart(e, task)}
-                                  onClick={(e) => handleTaskClick(e, task)}
-                                  className={`p-2 rounded text-xs cursor-pointer border-l-4 ${
-                                    horizon === 'BACKLOG'
-                                      ? 'bg-muted border-muted-foreground'
-                                      : isPersonal
-                                      ? `bg-personal/20 border-personal ${horizon === 'Today' ? 'bg-personal/30' : ''}`
-                                      : `bg-business/20 border-business ${horizon === 'Today' ? 'bg-business/30' : ''}`
-                                  } hover:opacity-80 transition-opacity`}
-                                  data-testid={`task-card-${task.id}`}
-                                >
-                                  <div className="font-medium">{task.name}</div>
-                                  <div className={`text-xs mt-1 ${
-                                    horizon === 'BACKLOG' 
-                                      ? 'text-muted-foreground'
-                                      : isPersonal ? 'text-personal' : 'text-business'
-                                  }`}>
-                                    {task.type} • {task.estimatedTime}h • {task.priority}
-                                    {task.progress > 0 && ` • ${task.progress}%`}
-                                  </div>
-                                  {task.xDate && (
-                                    <div className="text-xs mt-1 text-blue-600 font-medium">
-                                      Work: {format(new Date(task.xDate), "MMM dd")}
+                            <div className="space-y-1">
+                              {rootTasks.map(task => {
+                                if (showSubtasks) {
+                                  // Use hierarchical rendering when subtasks are shown
+                                  return renderTaskHierarchy(task, 0, horizon, category, cellTaskIds);
+                                } else {
+                                  // Use simple flat rendering when subtasks are hidden
+                                  const isPersonal = categories.indexOf(category) < 6;
+                                  return (
+                                    <div
+                                      key={task.id}
+                                      draggable
+                                      onDragStart={(e) => handleDragStart(e, task)}
+                                      onClick={(e) => handleTaskClick(e, task)}
+                                      className={cn(
+                                        `p-2 rounded text-xs cursor-pointer border-l-4`,
+                                        horizon === 'BACKLOG'
+                                          ? 'bg-muted border-muted-foreground'
+                                          : isPersonal
+                                          ? `bg-personal/20 border-personal ${horizon === 'Today' ? 'bg-personal/30' : ''}`
+                                          : `bg-business/20 border-business ${horizon === 'Today' ? 'bg-business/30' : ''}`,
+                                        'hover:opacity-80 transition-opacity'
+                                      )}
+                                      data-testid={`task-card-${task.id}`}
+                                    >
+                                      <div className="font-medium">{task.name}</div>
+                                      <div className={cn(
+                                        "text-xs mt-1",
+                                        horizon === 'BACKLOG' 
+                                          ? 'text-muted-foreground'
+                                          : isPersonal ? 'text-personal' : 'text-business'
+                                      )}>
+                                        {task.type} • {task.estimatedTime}h • {task.priority}
+                                        {task.progress > 0 ? ` • ${task.progress}%` : ''}
+                                      </div>
+                                      {task.xDate && (
+                                        <div className="text-xs mt-1 text-blue-600 font-medium">
+                                          Work: {format(new Date(task.xDate), "MMM dd")}
+                                        </div>
+                                      )}
+                                      {task.dueDate && (
+                                        <div className={cn(
+                                          "text-xs mt-1",
+                                          isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && "text-red-500 font-semibold",
+                                          isToday(new Date(task.dueDate)) && "text-orange-500 font-semibold",
+                                          isTomorrow(new Date(task.dueDate)) && "text-blue-500"
+                                        )}>
+                                          {isToday(new Date(task.dueDate))
+                                            ? "Due Today"
+                                            : isTomorrow(new Date(task.dueDate))
+                                            ? "Due Tomorrow"
+                                            : isPast(new Date(task.dueDate))
+                                            ? `Overdue`
+                                            : `Due ${format(new Date(task.dueDate), "MMM dd")}`}
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                  {task.dueDate && (
-                                    <div className={cn(
-                                      "text-xs mt-1",
-                                      isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && "text-red-500 font-semibold",
-                                      isToday(new Date(task.dueDate)) && "text-orange-500 font-semibold",
-                                      isTomorrow(new Date(task.dueDate)) && "text-blue-500"
-                                    )}>
-                                      {isToday(new Date(task.dueDate))
-                                        ? "Due Today"
-                                        : isTomorrow(new Date(task.dueDate))
-                                        ? "Due Tomorrow"
-                                        : isPast(new Date(task.dueDate))
-                                        ? `Overdue`
-                                        : `Due ${format(new Date(task.dueDate), "MMM dd")}`}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
+                                  );
+                                }
+                              })}
                             </div>
                           </td>
                         );
