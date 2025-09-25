@@ -298,6 +298,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Task Rollup Routes
+  app.get('/api/tasks/:id/rollups', isAuthenticated, async (req: any, res) => {
+    try {
+      const taskWithRollups = await storage.getTaskWithRollups(req.params.id, req.user.id);
+      res.json(taskWithRollups);
+    } catch (error) {
+      console.error("Error fetching task rollups:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch task rollups";
+      
+      if (errorMessage.includes("not found")) {
+        res.status(404).json({ message: errorMessage });
+      } else {
+        res.status(500).json({ message: errorMessage });
+      }
+    }
+  });
+
+  app.get('/api/tasks/rollups', isAuthenticated, async (req: any, res) => {
+    try {
+      const tasksWithRollups = await storage.getTasksWithRollups(req.user.id);
+      res.json(tasksWithRollups);
+    } catch (error) {
+      console.error("Error fetching tasks with rollups:", error);
+      res.status(500).json({ message: "Failed to fetch tasks with rollups" });
+    }
+  });
+
   // Planning Matrix Routes
   app.get('/api/planning/matrix', isAuthenticated, async (req: any, res) => {
     try {

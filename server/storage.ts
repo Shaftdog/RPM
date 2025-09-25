@@ -85,6 +85,24 @@ export interface IStorage {
   createTaskHierarchy(hierarchy: InsertTaskHierarchy, userId: string): Promise<TaskHierarchy>;
   deleteTaskHierarchy(id: string, userId: string): Promise<void>;
 
+  // Task rollup operations
+  getTaskWithRollups(taskId: string, userId: string): Promise<Task & { 
+    rolledUpProgress?: number;
+    rolledUpStatus?: string;
+    rolledUpEstimatedTime?: number;
+    rolledUpActualTime?: number;
+    isLeaf?: boolean;
+    children?: any[];
+  }>;
+  getTasksWithRollups(userId: string): Promise<Array<Task & {
+    rolledUpProgress?: number;
+    rolledUpStatus?: string;
+    rolledUpEstimatedTime?: number;
+    rolledUpActualTime?: number;
+    isLeaf?: boolean;
+    children?: any[];
+  }>>;
+
   // Session store
   sessionStore: session.Store;
 }
@@ -587,6 +605,184 @@ export class DatabaseStorage implements IStorage {
     // Assuming single parent (tree structure)
     const parentLevel = await this.getTaskHierarchyLevel(parentRelations[0].parentTaskId);
     return parentLevel + 1;
+  }
+
+  // Rollup calculation methods
+  async getTaskWithRollups(taskId: string, userId: string): Promise<Task & { 
+    rolledUpProgress?: number;
+    rolledUpStatus?: string;
+    rolledUpEstimatedTime?: number;
+    rolledUpActualTime?: number;
+    isLeaf?: boolean;
+    children?: any[];
+  }> {
+    const task = await this.getTask(taskId, userId);
+    if (!task) {
+      throw new Error("Task not found");
+    }
+
+    const rollups = await this.calculateTaskRollups(taskId, userId);
+    return {
+      ...task,
+      ...rollups
+    };
+  }
+
+  async calculateTaskRollups(taskId: string, userId: string): Promise<{
+    rolledUpProgress: number;
+    rolledUpStatus: string;
+    rolledUpEstimatedTime: number;
+    rolledUpActualTime: number;
+    isLeaf: boolean;
+    children: any[];
+  }> {
+    // For single-task rollup, use the optimized batch method and extract result
+    const allTasksWithRollups = await this.getTasksWithRollups(userId);
+    const taskWithRollups = allTasksWithRollups.find(t => t.id === taskId);
+    
+    if (!taskWithRollups) {
+      throw new Error("Task not found");
+    }
+
+    return {
+      rolledUpProgress: taskWithRollups.rolledUpProgress || 0,
+      rolledUpStatus: taskWithRollups.rolledUpStatus || 'not_started',
+      rolledUpEstimatedTime: taskWithRollups.rolledUpEstimatedTime || 0,
+      rolledUpActualTime: taskWithRollups.rolledUpActualTime || 0,
+      isLeaf: taskWithRollups.isLeaf || false,
+      children: taskWithRollups.children || []
+    };
+  }
+
+  // Performance-optimized batch rollup calculation using adjacency lists
+  async getTasksWithRollups(userId: string): Promise<Array<Task & {
+    rolledUpProgress?: number;
+    rolledUpStatus?: string;
+    rolledUpEstimatedTime?: number;
+    rolledUpActualTime?: number;
+    isLeaf?: boolean;
+    children?: any[];
+  }>> {
+    // Single query to get all user tasks and hierarchies
+    const [allTasks, allHierarchies] = await Promise.all([
+      this.getTasks(userId),
+      db.select().from(taskHierarchy)
+        .innerJoin(tasks, eq(taskHierarchy.childTaskId, tasks.id))
+        .where(eq(tasks.userId, userId))
+    ]);
+
+    // Build adjacency maps for efficient lookups
+    const taskMap = new Map(allTasks.map(task => [task.id, task]));
+    const childrenMap = new Map<string, string[]>();
+    const parentMap = new Map<string, string>();
+
+    // Populate adjacency maps
+    for (const hierarchy of allHierarchies) {
+      const parentId = hierarchy.task_hierarchy.parentTaskId;
+      const childId = hierarchy.task_hierarchy.childTaskId;
+      
+      if (!childrenMap.has(parentId)) {
+        childrenMap.set(parentId, []);
+      }
+      childrenMap.get(parentId)!.push(childId);
+      parentMap.set(childId, parentId);
+    }
+
+    // Calculate rollups using adjacency lists (bottom-up)
+    const rollupsCache = new Map();
+    
+    const calculateRollupsFromMap = (taskId: string): any => {
+      if (rollupsCache.has(taskId)) {
+        return rollupsCache.get(taskId);
+      }
+
+      const task = taskMap.get(taskId);
+      if (!task) return null;
+
+      const children = childrenMap.get(taskId) || [];
+      
+      if (children.length === 0) {
+        // Leaf task - use its own values
+        const rollups = {
+          rolledUpProgress: task.progress || 0,
+          rolledUpStatus: task.status,
+          rolledUpEstimatedTime: parseFloat(task.estimatedTime?.toString() || "0"),
+          rolledUpActualTime: parseFloat(task.actualTime?.toString() || "0"),
+          isLeaf: true,
+          children: []
+        };
+        rollupsCache.set(taskId, rollups);
+        return rollups;
+      }
+
+      // Parent task - aggregate from children
+      const childrenWithRollups = children.map(childId => ({
+        taskId: childId,
+        ...calculateRollupsFromMap(childId)
+      })).filter(Boolean);
+
+      let totalProgress = 0;
+      let totalWeight = 0;
+      let totalEstimatedTime = 0;
+      let totalActualTime = 0;
+      let statusCounts = {
+        not_started: 0,
+        in_progress: 0,
+        completed: 0,
+        blocked: 0,
+        cancelled: 0
+      };
+
+      for (const child of childrenWithRollups) {
+        // Exclude cancelled tasks from progress weighting
+        if (child.rolledUpStatus !== 'cancelled') {
+          const weight = child.rolledUpEstimatedTime || 1;
+          totalProgress += child.rolledUpProgress * weight;
+          totalWeight += weight;
+        }
+        
+        totalEstimatedTime += child.rolledUpEstimatedTime;
+        totalActualTime += child.rolledUpActualTime;
+        statusCounts[child.rolledUpStatus as keyof typeof statusCounts]++;
+      }
+
+      // Calculate rolled up progress (excluding cancelled from average)
+      const rolledUpProgress = totalWeight > 0 ? Math.round(totalProgress / totalWeight) : 0;
+      
+      // Improved status rollup logic
+      let rolledUpStatus = 'not_started';
+      if (statusCounts.blocked > 0) {
+        rolledUpStatus = 'blocked'; // Blocked takes highest priority
+      } else if (statusCounts.in_progress > 0) {
+        rolledUpStatus = 'in_progress';
+      } else if (statusCounts.not_started > 0) {
+        rolledUpStatus = 'not_started';
+      } else if (statusCounts.completed > 0) {
+        // Completed if all remaining are completed (cancelled excluded)
+        const activeChildren = children.length - statusCounts.cancelled;
+        rolledUpStatus = statusCounts.completed === activeChildren ? 'completed' : 'not_started';
+      } else if (statusCounts.cancelled === children.length) {
+        rolledUpStatus = 'cancelled'; // All children cancelled
+      }
+
+      const rollups = {
+        rolledUpProgress,
+        rolledUpStatus,
+        rolledUpEstimatedTime: totalEstimatedTime,
+        rolledUpActualTime: totalActualTime,
+        isLeaf: false,
+        children: childrenWithRollups
+      };
+      
+      rollupsCache.set(taskId, rollups);
+      return rollups;
+    };
+
+    // Calculate rollups for all tasks
+    return allTasks.map(task => ({
+      ...task,
+      ...calculateRollupsFromMap(task.id)
+    }));
   }
 }
 
