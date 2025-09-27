@@ -81,6 +81,7 @@ export default function StrategicPlanningMatrix() {
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [showSubtasks, setShowSubtasks] = useState(true);
+  const [selectedParentTaskId, setSelectedParentTaskId] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Fetch tasks with rollup calculations
@@ -207,6 +208,72 @@ export default function StrategicPlanningMatrix() {
     },
   });
 
+  const updateHierarchyMutation = useMutation({
+    mutationFn: async ({ taskId, newParentId, currentParentId }: {
+      taskId: string;
+      newParentId: string | null;
+      currentParentId: string | null;
+    }) => {
+      // If removing parent (setting to null)
+      if (!newParentId && currentParentId) {
+        // Get the hierarchy record to find its ID
+        const hierarchyResponse = await apiRequest("GET", `/api/tasks/${taskId}/hierarchy`);
+        const hierarchyData = await hierarchyResponse.json();
+        
+        // Find the hierarchy record for this parent-child relationship
+        const hierarchyRecord = hierarchyData.find((h: any) => 
+          h.parentTaskId === currentParentId && h.childTaskId === taskId
+        );
+        
+        if (hierarchyRecord) {
+          await apiRequest("DELETE", `/api/task-hierarchy/${hierarchyRecord.id}`);
+        }
+        return null;
+      }
+      
+      // If adding a new parent
+      if (newParentId) {
+        // Remove existing parent first if there is one
+        if (currentParentId) {
+          const hierarchyResponse = await apiRequest("GET", `/api/tasks/${taskId}/hierarchy`);
+          const hierarchyData = await hierarchyResponse.json();
+          
+          const hierarchyRecord = hierarchyData.find((h: any) => 
+            h.parentTaskId === currentParentId && h.childTaskId === taskId
+          );
+          
+          if (hierarchyRecord) {
+            await apiRequest("DELETE", `/api/task-hierarchy/${hierarchyRecord.id}`);
+          }
+        }
+        
+        // Add new parent relationship
+        const response = await apiRequest("POST", "/api/task-hierarchy", {
+          parentTaskId: newParentId,
+          childTaskId: taskId
+        });
+        return response.json();
+      }
+      
+      return null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/rollups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/tree'] });
+      toast({
+        title: "Hierarchy updated successfully!",
+        description: "Parent-child relationship has been updated.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error updating hierarchy",
+        description: error.message || "Failed to update parent task",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Organize tasks by matrix structure
   const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Quarter', 'Month', 'Week', 'Today', 'BACKLOG'];
   const categories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure', 'Marketing', 'Sales', 'Operations', 'Products', 'Production'];
@@ -271,20 +338,38 @@ export default function StrategicPlanningMatrix() {
   };
 
   const handleEditStart = () => {
-    if (selectedTask) {
+    if (selectedTask && taskTree) {
       setEditFormData({ ...selectedTask });
       setIsEditing(true);
+      // Set current parent task if exists
+      const currentParentId = taskTree.parents[selectedTask.id] || null;
+      setSelectedParentTaskId(currentParentId);
     }
   };
 
   const handleEditCancel = () => {
     setIsEditing(false);
     setEditFormData(null);
+    setSelectedParentTaskId(null);
   };
 
   const handleEditSave = () => {
-    if (editFormData) {
+    if (editFormData && selectedTask && taskTree) {
+      // Update task data first
       updateTaskMutation.mutate(editFormData);
+      
+      // Check if parent task has changed
+      const currentParentId = taskTree.parents[selectedTask.id] || null;
+      if (selectedParentTaskId !== currentParentId) {
+        // Update hierarchy relationship
+        updateHierarchyMutation.mutate({
+          taskId: selectedTask.id,
+          newParentId: selectedParentTaskId,
+          currentParentId: currentParentId
+        });
+      }
+      
+      setSelectedParentTaskId(null);
     }
   };
 
@@ -327,6 +412,24 @@ export default function StrategicPlanningMatrix() {
 
   const toggleShowSubtasks = () => {
     setShowSubtasks(!showSubtasks);
+  };
+
+  // Helper function to get all descendants of a task (for cycle prevention)
+  const getAllDescendants = (taskId: string, taskTree: TaskTree): Set<string> => {
+    const descendants = new Set<string>();
+    
+    const addDescendants = (currentTaskId: string) => {
+      const children = taskTree.children[currentTaskId] || [];
+      for (const childId of children) {
+        if (!descendants.has(childId)) {
+          descendants.add(childId);
+          addDescendants(childId); // Recursively add grandchildren
+        }
+      }
+    };
+    
+    addDescendants(taskId);
+    return descendants;
   };
 
   // Helper function to determine effective cell for a task
@@ -1098,6 +1201,44 @@ export default function StrategicPlanningMatrix() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* Parent Task */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Parent Task</Label>
+                <Select 
+                  value={selectedParentTaskId || ""} 
+                  onValueChange={(value) => setSelectedParentTaskId(value || null)}
+                >
+                  <SelectTrigger data-testid="select-edit-parent-task">
+                    <SelectValue placeholder="No parent task (root level)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No parent task (root level)</SelectItem>
+                    {tasks
+                      .filter(task => {
+                        if (!editFormData || !taskTree) return false;
+                        
+                        // Exclude current task
+                        if (task.id === editFormData.id) return false;
+                        
+                        // Exclude all descendants to prevent cycles
+                        const descendants = getAllDescendants(editFormData.id, taskTree);
+                        if (descendants.has(task.id)) return false;
+                        
+                        return true;
+                      })
+                      .map(task => (
+                        <SelectItem key={task.id} value={task.id}>
+                          {task.name} ({task.type})
+                        </SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Select a parent task to create a hierarchical relationship. This task will become a subtask.
+                </p>
               </div>
 
               {/* Priority and Estimated Time */}
