@@ -98,31 +98,40 @@ export default function TaskCaptureInterface() {
 
   const createTasksMutation = useMutation({
     mutationFn: async (tasks: ExtractedTask[]) => {
-      const promises = tasks
+      // Use the new bulk endpoint with dependencies
+      const selectedTasks = tasks
         .filter(task => task.selected)
-        .map(task => apiRequest("POST", "/api/tasks", {
+        .map(task => ({
           name: task.name,
           type: task.type,
           category: task.category,
           subcategory: task.subcategory,
           timeHorizon: task.timeHorizon,
           priority: task.priority,
-          estimatedTime: task.estimatedTime?.toString(),
-          caloriesIntake: task.caloriesIntake?.toString(),
-          caloriesExpenditure: task.caloriesExpenditure?.toString(),
+          estimatedTime: task.estimatedTime,
+          caloriesIntake: task.caloriesIntake,
+          caloriesExpenditure: task.caloriesExpenditure,
           why: task.why,
           description: task.description,
           dueDate: task.dueDate ? new Date(task.dueDate) : null,
           xDate: task.xDate ? new Date(task.xDate) : null,
+          dependencies: task.dependencies || [], // Include dependencies for hierarchical processing
         }));
+
+      const response = await apiRequest("POST", "/api/tasks/bulk", {
+        tasks: selectedTasks
+      });
       
-      return Promise.all(promises);
+      return response.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/rollups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/tree'] });
+      
       toast({
         title: "Tasks created successfully",
-        description: `${data.length} tasks added to your workspace`,
+        description: `${data.tasksCreated} tasks added${data.hierarchiesCreated > 0 ? ` with ${data.hierarchiesCreated} hierarchical relationships` : ''} to your workspace`,
       });
       setExtractedTasks([]);
     },

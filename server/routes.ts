@@ -120,6 +120,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk task creation with dependency processing
+  app.post('/api/tasks/bulk', isAuthenticated, async (req: any, res) => {
+    try {
+      const tasksData = req.body.tasks;
+      if (!Array.isArray(tasksData)) {
+        return res.status(400).json({ message: "Expected 'tasks' array in request body" });
+      }
+
+      console.log(`Processing bulk creation of ${tasksData.length} tasks with dependencies`);
+
+      // Step 1: Create all tasks first (without dependencies)
+      const createdTasks = [];
+      const taskNameToIdMap = new Map<string, string>();
+
+      for (const taskData of tasksData) {
+        try {
+          // Validate each task but exclude dependencies from storage
+          const validTaskData = insertTaskSchema.parse({
+            name: taskData.name,
+            type: taskData.type,
+            category: taskData.category,
+            subcategory: taskData.subcategory,
+            timeHorizon: taskData.timeHorizon,
+            priority: taskData.priority,
+            estimatedTime: taskData.estimatedTime?.toString(),
+            caloriesIntake: taskData.caloriesIntake?.toString(),
+            caloriesExpenditure: taskData.caloriesExpenditure?.toString(),
+            why: taskData.why,
+            description: taskData.description,
+            dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
+            xDate: taskData.xDate ? new Date(taskData.xDate) : null,
+          });
+
+          const createdTask = await storage.createTask({ ...validTaskData, userId: req.user.id });
+          createdTasks.push({ ...createdTask, dependencies: taskData.dependencies || [] });
+          
+          // Map task name to ID for dependency resolution (with normalization)
+          const normalizedName = taskData.name.trim().toLowerCase();
+          taskNameToIdMap.set(normalizedName, createdTask.id);
+          
+          console.log(`Created task: "${taskData.name}" with ID: ${createdTask.id}`);
+        } catch (taskError) {
+          console.error(`Error creating individual task "${taskData.name}":`, taskError);
+          // Continue with other tasks rather than failing the entire batch
+        }
+      }
+
+      console.log(`Successfully created ${createdTasks.length} tasks, now processing dependencies...`);
+
+      // Step 2: Process dependencies and create hierarchical relationships
+      const hierarchiesCreated = [];
+      for (const task of createdTasks) {
+        if (task.dependencies && task.dependencies.length > 0) {
+          for (const dependencyName of task.dependencies) {
+            // Normalize dependency name for matching
+            const normalizedDependencyName = dependencyName.trim().toLowerCase();
+            const parentTaskId = taskNameToIdMap.get(normalizedDependencyName);
+            
+            if (parentTaskId && parentTaskId !== task.id) {
+              try {
+                // Create hierarchical relationship (dependency becomes parent)
+                const hierarchy = await storage.createTaskHierarchy({
+                  parentTaskId: parentTaskId,
+                  childTaskId: task.id
+                }, req.user.id);
+                
+                hierarchiesCreated.push(hierarchy);
+                console.log(`Created hierarchy: "${dependencyName}" (${parentTaskId}) -> "${task.name}" (${task.id})`);
+              } catch (hierarchyError) {
+                console.error(`Error creating hierarchy relationship between "${dependencyName}" and "${task.name}":`, hierarchyError);
+                // Continue processing other relationships
+              }
+            } else if (!parentTaskId) {
+              console.warn(`Dependency "${dependencyName}" not found in created tasks for task "${task.name}" (normalized: "${normalizedDependencyName}")`);
+            }
+          }
+        }
+      }
+
+      console.log(`Successfully created ${hierarchiesCreated.length} hierarchical relationships`);
+
+      // Step 3: Return success response
+      res.status(201).json({
+        message: `Successfully created ${createdTasks.length} tasks with ${hierarchiesCreated.length} hierarchical relationships`,
+        tasksCreated: createdTasks.length,
+        hierarchiesCreated: hierarchiesCreated.length,
+        tasks: createdTasks.map(t => ({ id: t.id, name: t.name, type: t.type }))
+      });
+
+      // Step 4: Broadcast events to WebSocket clients
+      broadcastToUser(req.user.id, { 
+        type: 'tasks_bulk_created', 
+        data: { 
+          tasksCreated: createdTasks.length,
+          hierarchiesCreated: hierarchiesCreated.length
+        }
+      });
+
+    } catch (error) {
+      console.error("Error in bulk task creation:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to create tasks in bulk";
+      res.status(500).json({ message: errorMessage });
+    }
+  });
+
   app.post('/api/tasks', isAuthenticated, async (req: any, res) => {
     try {
       const taskData = insertTaskSchema.parse(req.body);
