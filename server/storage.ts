@@ -689,7 +689,7 @@ export class DatabaseStorage implements IStorage {
     const childrenMap = new Map<string, string[]>();
     const parentMap = new Map<string, string>();
 
-    // Populate adjacency maps
+    // Populate adjacency maps from database hierarchy
     for (const hierarchy of allHierarchies) {
       const parentId = hierarchy.task_hierarchy.parentTaskId;
       const childId = hierarchy.task_hierarchy.childTaskId;
@@ -699,6 +699,36 @@ export class DatabaseStorage implements IStorage {
       }
       childrenMap.get(parentId)!.push(childId);
       parentMap.set(childId, parentId);
+    }
+
+    // Also include inherited children (tasks with timeHorizon="inherit")
+    for (const task of allTasks) {
+      if (task.timeHorizon === 'inherit') {
+        const parentId = parentMap.get(task.id);
+        if (parentId) {
+          // This task inherits its parent's time horizon, so it should be included
+          // in rollup calculations as if it were a direct child
+          // (it's already in the parentMap, so no need to add it again)
+          continue;
+        } else {
+          // Inherited task without a parent - find potential parents by hierarchy
+          // This handles cases where inherit relationship is implicit
+          for (const hierarchy of allHierarchies) {
+            if (hierarchy.task_hierarchy.childTaskId === task.id) {
+              const parentId = hierarchy.task_hierarchy.parentTaskId;
+              if (!childrenMap.has(parentId)) {
+                childrenMap.set(parentId, []);
+              }
+              // Ensure the inherited task is in the parent's children for rollups
+              if (!childrenMap.get(parentId)!.includes(task.id)) {
+                childrenMap.get(parentId)!.push(task.id);
+              }
+              parentMap.set(task.id, parentId);
+              break;
+            }
+          }
+        }
+      }
     }
 
     // Calculate rollups using adjacency lists (bottom-up)
