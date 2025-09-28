@@ -1207,14 +1207,14 @@ export default function StrategicPlanningMatrix() {
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Parent Task</Label>
                 <Select 
-                  value={selectedParentTaskId || ""} 
-                  onValueChange={(value) => setSelectedParentTaskId(value || null)}
+                  value={selectedParentTaskId || "none"} 
+                  onValueChange={(value) => setSelectedParentTaskId(value === "none" ? null : value)}
                 >
                   <SelectTrigger data-testid="select-edit-parent-task">
                     <SelectValue placeholder="No parent task (root level)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No parent task (root level)</SelectItem>
+                    <SelectItem value="none">No parent task (root level)</SelectItem>
                     {tasks
                       .filter(task => {
                         if (!editFormData || !taskTree) return false;
