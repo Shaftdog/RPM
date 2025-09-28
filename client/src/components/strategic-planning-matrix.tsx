@@ -434,6 +434,20 @@ export default function StrategicPlanningMatrix() {
 
   // Helper function to determine effective cell for a task
   const getTaskCell = (task: Task): { horizon: string; category: string } => {
+    // Handle inherited time horizon
+    if (task.timeHorizon === 'inherit' && taskTree) {
+      const parentId = taskTree.parents[task.id];
+      if (parentId) {
+        const parentTask = taskTree.tasks[parentId];
+        if (parentTask) {
+          // Recursively get parent's cell (in case parent also inherits)
+          return getTaskCell(parentTask);
+        }
+      }
+      // If no parent found, fall back to BACKLOG
+      return { horizon: 'BACKLOG', category: task.subcategory || 'Mental' };
+    }
+    
     let taskHorizon = task.timeHorizon === '1 Year' ? '1 Year' : 
                       task.timeHorizon === '5 Year' ? '5 Year' : 
                       task.timeHorizon === '10 Year' ? '10 Year' : 
@@ -526,7 +540,17 @@ export default function StrategicPlanningMatrix() {
     // Count all children, not just those in the same cell
     const allChildren = taskTree.children[task.id] || [];
     const childrenInCell = allChildren.filter(childId => cellTaskIds.has(childId));
+    
+    // Also include inherited children (children with "inherit" time horizon)
+    const inheritedChildren = allChildren.filter(childId => {
+      const childTask = taskTree.tasks[childId];
+      return childTask && childTask.timeHorizon === 'inherit';
+    });
+    
+    // Combined children to display in this cell
+    const childrenToDisplay = Array.from(new Set([...childrenInCell, ...inheritedChildren]));
     const hasChildrenInCell = childrenInCell.length > 0;
+    const hasChildrenToDisplay = childrenToDisplay.length > 0;
     const hasAnyChildren = allChildren.length > 0;
     const isExpanded = expandedTasks.has(task.id);
     
@@ -554,7 +578,7 @@ export default function StrategicPlanningMatrix() {
       >
         {/* Hierarchical controls */}
         <div className="flex items-start space-x-1">
-          {hasAnyChildren && (
+          {hasChildrenToDisplay && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -570,13 +594,13 @@ export default function StrategicPlanningMatrix() {
               )}
             </button>
           )}
-          {!hasAnyChildren && depth > 0 && (
+          {!hasChildrenToDisplay && depth > 0 && (
             <div className="w-4 h-3 flex-shrink-0 mt-0.5" />
           )}
           
           <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-1">
-              {hasAnyChildren && (
+              {hasChildrenToDisplay && (
                 isExpanded ? (
                   <FolderOpen className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
                 ) : (
@@ -624,9 +648,9 @@ export default function StrategicPlanningMatrix() {
       </div>
     );
 
-    // Render children if expanded (only children that belong to this cell)
-    if (hasChildrenInCell && isExpanded) {
-      for (const childId of childrenInCell) {
+    // Render children if expanded (includes both same-cell and inherited children)
+    if (hasChildrenToDisplay && isExpanded) {
+      for (const childId of childrenToDisplay) {
         const childTask = taskTree.tasks[childId];
         if (childTask && 
             childTask.status !== 'completed' && 
