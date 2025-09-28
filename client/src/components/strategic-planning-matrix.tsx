@@ -523,9 +523,11 @@ export default function StrategicPlanningMatrix() {
     const elements: React.ReactNode[] = [];
     const isPersonal = categories.indexOf(category) < 6;
     
-    // Only count children that are in the same cell
-    const childrenInCell = (taskTree.children[task.id] || []).filter(childId => cellTaskIds.has(childId));
+    // Count all children, not just those in the same cell
+    const allChildren = taskTree.children[task.id] || [];
+    const childrenInCell = allChildren.filter(childId => cellTaskIds.has(childId));
     const hasChildrenInCell = childrenInCell.length > 0;
+    const hasAnyChildren = allChildren.length > 0;
     const isExpanded = expandedTasks.has(task.id);
     
     console.log(`Rendering task ${task.id} (${task.name}): hasChildrenInCell=${hasChildrenInCell}, childrenInCell=${childrenInCell.length}, allChildren=${taskTree.children[task.id]?.length || 0}, depth=${depth}`);
@@ -552,7 +554,7 @@ export default function StrategicPlanningMatrix() {
       >
         {/* Hierarchical controls */}
         <div className="flex items-start space-x-1">
-          {hasChildrenInCell && (
+          {hasAnyChildren && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -568,13 +570,13 @@ export default function StrategicPlanningMatrix() {
               )}
             </button>
           )}
-          {!hasChildrenInCell && depth > 0 && (
+          {!hasAnyChildren && depth > 0 && (
             <div className="w-4 h-3 flex-shrink-0 mt-0.5" />
           )}
           
           <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-1">
-              {hasChildrenInCell && (
+              {hasAnyChildren && (
                 isExpanded ? (
                   <FolderOpen className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
                 ) : (
