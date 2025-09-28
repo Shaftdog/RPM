@@ -1314,6 +1314,7 @@ export default function StrategicPlanningMatrix() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="inherit">Inherit from Parent</SelectItem>
                     <SelectItem value="Today">Today</SelectItem>
                     <SelectItem value="Week">This Week</SelectItem>
                     <SelectItem value="1 Year">1 Year</SelectItem>
