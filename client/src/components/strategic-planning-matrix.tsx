@@ -1215,7 +1215,7 @@ export default function StrategicPlanningMatrix() {
               </div>
 
               {/* Subtasks Section */}
-              {useMemo(() => {
+              {(() => {
                 if (!taskTree || !selectedTask) return null;
                 
                 const childrenIds = taskTree.children[selectedTask.id] || [];
@@ -1335,7 +1335,7 @@ export default function StrategicPlanningMatrix() {
                     )}
                   </div>
                 );
-              }, [selectedTask?.id, taskTree])}
+              })()}
 
               {/* Task ID for reference */}
               <div className="pt-4 border-t">
