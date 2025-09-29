@@ -281,10 +281,7 @@ export default function StrategicPlanningMatrix() {
 
   const updateSequenceMutation = useMutation({
     mutationFn: async ({ hierarchyId, sequence }: { hierarchyId: string; sequence: number | null }) => {
-      const response = await apiRequest(`/api/task-hierarchy/${hierarchyId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ sequence }),
-      });
+      const response = await apiRequest("PATCH", `/api/task-hierarchy/${hierarchyId}`, { sequence });
       return response.json();
     },
     onSuccess: () => {
