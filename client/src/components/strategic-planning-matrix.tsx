@@ -274,6 +274,44 @@ export default function StrategicPlanningMatrix() {
     },
   });
 
+  // Function to resolve effective time horizon for inherited tasks
+  const getEffectiveTimeHorizon = (task: Task): string => {
+    if (!taskTree || task.timeHorizon !== 'inherit') {
+      return task.timeHorizon || 'BACKLOG';
+    }
+    
+    // Resolve inheritance by climbing the parent chain
+    const visited = new Set<string>();
+    let currentTaskId = task.id;
+    
+    while (currentTaskId && !visited.has(currentTaskId)) {
+      visited.add(currentTaskId);
+      const parentId = taskTree.parents[currentTaskId];
+      
+      if (!parentId) {
+        // No parent found, default to BACKLOG
+        return 'BACKLOG';
+      }
+      
+      const parentTask = taskTree.tasks[parentId];
+      if (!parentTask) {
+        // Parent task not found, default to BACKLOG
+        return 'BACKLOG';
+      }
+      
+      if (parentTask.timeHorizon !== 'inherit') {
+        // Found a parent with a concrete time horizon
+        return parentTask.timeHorizon || 'BACKLOG';
+      }
+      
+      // Parent also inherits, continue climbing
+      currentTaskId = parentId;
+    }
+    
+    // Cycle detected or no resolution found, default to BACKLOG
+    return 'BACKLOG';
+  };
+
   // Organize tasks by matrix structure
   const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Quarter', 'Month', 'Week', 'Today', 'BACKLOG'];
   const categories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure', 'Marketing', 'Sales', 'Operations', 'Products', 'Production'];
@@ -291,10 +329,15 @@ export default function StrategicPlanningMatrix() {
     task.status !== 'completed' && 
     !(task.description && task.description.startsWith('Recurring: '))
   ).forEach(task => {
-    let horizon = task.timeHorizon === '1 Year' ? '1 Year' : 
-                  task.timeHorizon === '5 Year' ? '5 Year' : 
-                  task.timeHorizon === '10 Year' ? '10 Year' : 
-                  task.timeHorizon || 'BACKLOG';
+    // Use effective time horizon for inherited tasks
+    let horizon = getEffectiveTimeHorizon(task);
+    
+    // Normalize horizon names
+    if (horizon === '1 Year') horizon = '1 Year';
+    else if (horizon === '5 Year') horizon = '5 Year';
+    else if (horizon === '10 Year') horizon = '10 Year';
+    else if (!horizon) horizon = 'BACKLOG';
+    
     const category = task.subcategory || 'Mental';
     
     // For "Today" row, only show tasks where xDate (work date) is today
