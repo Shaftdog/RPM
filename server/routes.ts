@@ -381,6 +381,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch('/api/task-hierarchy/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const updateSchema = z.object({
+        sequence: z.number().int().positive().nullable().optional()
+      });
+      
+      const updates = updateSchema.parse(req.body);
+      const hierarchy = await storage.updateTaskHierarchy(req.params.id, req.user.id, updates);
+      res.json(hierarchy);
+      
+      // Broadcast to WebSocket clients
+      broadcastToUser(req.user.id, { type: 'hierarchy_updated', data: hierarchy });
+    } catch (error) {
+      console.error("Error updating task hierarchy:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to update task hierarchy";
+      
+      // Map specific errors to appropriate status codes
+      if (errorMessage.includes("not found")) {
+        res.status(404).json({ message: errorMessage });
+      } else if (errorMessage.includes("Unauthorized")) {
+        res.status(403).json({ message: errorMessage });
+      } else if (errorMessage.includes("already used") || errorMessage.startsWith("SEQUENCE_CONFLICT:")) {
+        // Handle both old and new sequence conflict error formats
+        const sequence = errorMessage.startsWith("SEQUENCE_CONFLICT:") ? errorMessage.split(':')[1] : "that";
+        const message = `Sequence ${sequence} is already used by another subtask. Please choose a different number.`;
+        res.status(409).json({ 
+          message,
+          code: 'SEQUENCE_CONFLICT'
+        });
+      } else {
+        res.status(400).json({ message: errorMessage });
+      }
+    }
+  });
+
   app.delete('/api/task-hierarchy/:id', isAuthenticated, async (req: any, res) => {
     try {
       await storage.deleteTaskHierarchy(req.params.id, req.user.id);
@@ -440,6 +475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tasks: Object.fromEntries(tree.tasks),
         children: Object.fromEntries(tree.children),
         parents: Object.fromEntries(tree.parents),
+        hierarchies: Object.fromEntries(tree.hierarchies), // Include hierarchy data with sequence
         roots: tree.roots,
         leaves: tree.leaves
       };

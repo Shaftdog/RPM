@@ -9,7 +9,8 @@ import {
   pgEnum,
   boolean,
   jsonb,
-  index
+  index,
+  uniqueIndex
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -112,8 +113,14 @@ export const taskHierarchy = pgTable("task_hierarchy", {
   parentTaskId: varchar("parent_task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
   childTaskId: varchar("child_task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
   hierarchyLevel: integer("hierarchy_level").notNull(),
+  sequence: integer("sequence"), // Nullable - defines order within parent
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Unique constraint: each parent can only have one child at each sequence number
+  uniqueIndex("unique_parent_sequence").on(table.parentTaskId, table.sequence).where(sql`${table.sequence} IS NOT NULL`),
+  // Performance index for sorting subtasks
+  index("hierarchy_parent_sequence").on(table.parentTaskId, table.sequence)
+]);
 
 // Enhanced Recurring tasks with comprehensive fields
 export const recurringTasks = pgTable("recurring_tasks", {
@@ -379,6 +386,8 @@ export const insertTaskHierarchySchema = createInsertSchema(taskHierarchy).omit(
   id: true,
   hierarchyLevel: true, // Computed server-side
   createdAt: true,
+}).extend({
+  sequence: z.number().int().positive().optional().nullable(), // Allow setting sequence when creating hierarchy
 });
 
 // Types

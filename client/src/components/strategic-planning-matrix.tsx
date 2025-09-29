@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon, Trash2, ChevronDown, ChevronRight, TreePine, Folder, FolderOpen } from "lucide-react";
 import { format, isPast, isToday, isTomorrow, formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
+import type { TaskHierarchy } from "@shared/schema";
 
 interface Task {
   id: string;
@@ -69,6 +70,7 @@ interface TaskTree {
   tasks: Record<string, Task>;
   children: Record<string, string[]>;
   parents: Record<string, string>;
+  hierarchies: Record<string, TaskHierarchy[]>; // parentId -> array of hierarchy records with sequence
   roots: string[];
   leaves: string[];
 }
@@ -81,6 +83,8 @@ export default function StrategicPlanningMatrix() {
   const [editFormData, setEditFormData] = useState<Task | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [editingSequence, setEditingSequence] = useState<string | null>(null); // hierarchy ID being edited
+  const [sequenceValue, setSequenceValue] = useState<string>(''); // current sequence input value
   const [showSubtasks, setShowSubtasks] = useState(true);
   const [selectedParentTaskId, setSelectedParentTaskId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -275,6 +279,40 @@ export default function StrategicPlanningMatrix() {
     },
   });
 
+  const updateSequenceMutation = useMutation({
+    mutationFn: async ({ hierarchyId, sequence }: { hierarchyId: string; sequence: number | null }) => {
+      const response = await apiRequest(`/api/task-hierarchy/${hierarchyId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ sequence }),
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/tree'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks/rollups'] });
+      toast({
+        title: "Sequence updated successfully!",
+        description: "Task sequence has been updated.",
+      });
+    },
+    onError: (error: any) => {
+      // Handle specific sequence conflict errors
+      if (error?.status === 409 && error?.code === 'SEQUENCE_CONFLICT') {
+        toast({
+          title: "Sequence Conflict",
+          description: error.message || "This sequence number is already used. Please choose a different number.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error updating sequence",
+          description: error.message || "Failed to update task sequence",
+          variant: "destructive",
+        });
+      }
+    },
+  });
+
   // Function to resolve effective time horizon for inherited tasks
   const getEffectiveTimeHorizon = (task: Task): string => {
     if (!taskTree || task.timeHorizon !== 'inherit') {
@@ -456,6 +494,34 @@ export default function StrategicPlanningMatrix() {
 
   const toggleShowSubtasks = () => {
     setShowSubtasks(!showSubtasks);
+  };
+
+  // Sequence editing functions
+  const handleSequenceEdit = (hierarchyId: string, currentSequence: number | null) => {
+    setEditingSequence(hierarchyId);
+    setSequenceValue(currentSequence?.toString() || '');
+  };
+
+  const handleSequenceSave = (hierarchyId: string) => {
+    const sequence = sequenceValue.trim() === '' ? null : parseInt(sequenceValue.trim());
+    
+    if (sequence !== null && (isNaN(sequence) || sequence < 1)) {
+      toast({
+        title: "Invalid sequence",
+        description: "Sequence must be a positive number or empty",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    updateSequenceMutation.mutate({ hierarchyId, sequence });
+    setEditingSequence(null);
+    setSequenceValue('');
+  };
+
+  const handleSequenceCancel = () => {
+    setEditingSequence(null);
+    setSequenceValue('');
   };
 
   // Helper function to get all descendants of a task (for cycle prevention)
@@ -1218,14 +1284,35 @@ export default function StrategicPlanningMatrix() {
               {(() => {
                 if (!taskTree || !selectedTask) return null;
                 
-                const childrenIds = taskTree.children[selectedTask.id] || [];
-                if (childrenIds.length === 0) return null; // No children at all
+                // Get hierarchy data with sequence information
+                const hierarchyRecords = taskTree.hierarchies[selectedTask.id] || [];
+                if (hierarchyRecords.length === 0) return null; // No children at all
+                
+                // Get children with their hierarchy data and sort by sequence, then priority
+                const childrenWithHierarchy = hierarchyRecords
+                  .map(hierarchy => ({
+                    task: taskTree.tasks[hierarchy.childTaskId],
+                    hierarchy: hierarchy
+                  }))
+                  .filter(item => item.task) // Only include existing tasks
+                  .sort((a, b) => {
+                    // Primary sort: sequence (nulls last)
+                    if (a.hierarchy.sequence === null && b.hierarchy.sequence !== null) return 1;
+                    if (b.hierarchy.sequence === null && a.hierarchy.sequence !== null) return -1;
+                    if (a.hierarchy.sequence !== null && b.hierarchy.sequence !== null && a.hierarchy.sequence !== b.hierarchy.sequence) {
+                      return a.hierarchy.sequence - b.hierarchy.sequence;
+                    }
+                    
+                    // Secondary sort: priority (High → Medium → Low) for both sequenced and unsequenced items
+                    const priorityOrder = { 'High': 0, 'Medium': 1, 'Low': 2 };
+                    return priorityOrder[a.task.priority] - priorityOrder[b.task.priority];
+                  });
                 
                 // Filter active subtasks for display (exclude completed and recurring)
-                const allChildren = childrenIds.map(id => taskTree.tasks[id]).filter(task => task);
-                const activeSubtasks = allChildren.filter(task => 
-                  task.status !== 'completed' && 
-                  !(task.description && task.description.startsWith('Recurring: '))
+                const allChildren = childrenWithHierarchy.map(item => item.task);
+                const activeSubtasks = childrenWithHierarchy.filter(item => 
+                  item.task.status !== 'completed' && 
+                  !(item.task.description && item.task.description.startsWith('Recurring: '))
                 );
                 
                 // Calculate consistent progress summary (excluding recurring instances)
@@ -1249,60 +1336,123 @@ export default function StrategicPlanningMatrix() {
                     
                     <ScrollArea className="max-h-48 w-full rounded-md border">
                       <div className="space-y-2 p-3">
-                        {activeSubtasks.length > 0 ? activeSubtasks.map(subtask => (
-                          <div
-                            key={subtask.id}
-                            className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
-                            onClick={() => {
-                              setSelectedTask(subtask);
-                              // Keep dialog open to show subtask details
-                            }}
-                            data-testid={`row-subtask-${subtask.id}`}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center space-x-2">
-                                <div className="font-medium text-sm truncate">
-                                  {subtask.name}
+                        {activeSubtasks.length > 0 ? activeSubtasks.map(item => {
+                          const subtask = item.task;
+                          const hierarchy = item.hierarchy;
+                          return (
+                            <div
+                              key={subtask.id}
+                              className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
+                              onClick={() => {
+                                setSelectedTask(subtask);
+                                // Keep dialog open to show subtask details
+                              }}
+                              data-testid={`row-subtask-${subtask.id}`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center space-x-2">
+                                  {/* Sequence indicator - editable */}
+                                  {editingSequence === hierarchy.id ? (
+                                    <div className="flex-shrink-0 flex items-center space-x-1">
+                                      <Input
+                                        type="number"
+                                        value={sequenceValue}
+                                        onChange={(e) => setSequenceValue(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            handleSequenceSave(hierarchy.id);
+                                          } else if (e.key === 'Escape') {
+                                            handleSequenceCancel();
+                                          }
+                                        }}
+                                        className="w-12 h-6 text-xs text-center p-1"
+                                        placeholder="#"
+                                        autoFocus
+                                        min="1"
+                                        data-testid={`input-sequence-${hierarchy.id}`}
+                                      />
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSequenceSave(hierarchy.id);
+                                        }}
+                                        data-testid={`button-save-sequence-${hierarchy.id}`}
+                                      >
+                                        <Save className="h-3 w-3" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSequenceCancel();
+                                        }}
+                                        data-testid={`button-cancel-sequence-${hierarchy.id}`}
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div 
+                                      className="flex-shrink-0 w-6 h-6 bg-primary/10 text-primary rounded-sm flex items-center justify-center text-xs font-mono cursor-pointer hover:bg-primary/20 transition-colors"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSequenceEdit(hierarchy.id, hierarchy.sequence);
+                                      }}
+                                      title="Click to edit sequence"
+                                      data-testid={`sequence-indicator-${hierarchy.id}`}
+                                    >
+                                      {hierarchy.sequence || '#'}
+                                    </div>
+                                  )}
+                                  <div className="font-medium text-sm truncate">
+                                    {subtask.name}
+                                  </div>
+                                  {subtask.timeHorizon === 'inherit' && (
+                                    <Badge variant="outline" className="text-xs">
+                                      inherits
+                                    </Badge>
+                                  )}
                                 </div>
-                                {subtask.timeHorizon === 'inherit' && (
-                                  <Badge variant="outline" className="text-xs">
-                                    inherits
-                                  </Badge>
+                                <div className="text-xs text-muted-foreground mt-1 ml-8">
+                                  {subtask.type} • {subtask.estimatedTime}h • {subtask.priority}
+                                  {subtask.progress > 0 && ` • ${subtask.progress}%`}
+                                  {hierarchy.sequence && ` • Seq: ${hierarchy.sequence}`}
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center space-x-2 ml-2">
+                                {subtask.progress > 0 && (
+                                  <div className="w-16">
+                                    <Progress value={subtask.progress} className="h-1" />
+                                  </div>
                                 )}
-                              </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {subtask.type} • {subtask.estimatedTime}h • {subtask.priority}
-                                {subtask.progress > 0 && ` • ${subtask.progress}%`}
+                                <Badge 
+                                  variant={subtask.status === 'completed' ? 'default' : 'outline'}
+                                  className="text-xs"
+                                >
+                                  {subtask.status}
+                                </Badge>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedTask(subtask);
+                                  }}
+                                  data-testid={`button-open-subtask-${subtask.id}`}
+                                >
+                                  <ChevronRight className="h-3 w-3" />
+                                </Button>
                               </div>
                             </div>
-                            
-                            <div className="flex items-center space-x-2 ml-2">
-                              {subtask.progress > 0 && (
-                                <div className="w-16">
-                                  <Progress value={subtask.progress} className="h-1" />
-                                </div>
-                              )}
-                              <Badge 
-                                variant={subtask.status === 'completed' ? 'default' : 'outline'}
-                                className="text-xs"
-                              >
-                                {subtask.status}
-                              </Badge>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedTask(subtask);
-                                }}
-                                data-testid={`button-open-subtask-${subtask.id}`}
-                              >
-                                <ChevronRight className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        )) : (
+                          );
+                        }) : (
                           <div className="text-center py-4 text-muted-foreground" data-testid="text-subtasks-empty">
                             <div className="text-sm">
                               {completedCount > 0 

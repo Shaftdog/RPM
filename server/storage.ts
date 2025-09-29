@@ -83,6 +83,7 @@ export interface IStorage {
   // Task hierarchy operations
   getTaskHierarchy(parentTaskId: string, userId?: string): Promise<TaskHierarchy[]>;
   createTaskHierarchy(hierarchy: InsertTaskHierarchy, userId: string): Promise<TaskHierarchy>;
+  updateTaskHierarchy(id: string, userId: string, updates: { sequence?: number | null }): Promise<TaskHierarchy>;
   deleteTaskHierarchy(id: string, userId: string): Promise<void>;
 
   // Task rollup operations
@@ -108,6 +109,7 @@ export interface IStorage {
     tasks: Map<string, Task>;
     children: Map<string, string[]>;
     parents: Map<string, string>;
+    hierarchies: Map<string, TaskHierarchy[]>; // parentId -> array of hierarchy records with sequence
     roots: string[];
     leaves: string[];
   }>;
@@ -489,11 +491,13 @@ export class DatabaseStorage implements IStorage {
   async getTaskHierarchy(parentTaskId: string, userId?: string): Promise<TaskHierarchy[]> {
     if (userId) {
       // Scope results to user by joining child tasks and filtering by user ownership
+      // Sort by sequence (nulls last) then by created date for consistent ordering
       return db.select({
         id: taskHierarchy.id,
         parentTaskId: taskHierarchy.parentTaskId,
         childTaskId: taskHierarchy.childTaskId,
         hierarchyLevel: taskHierarchy.hierarchyLevel,
+        sequence: taskHierarchy.sequence,
         createdAt: taskHierarchy.createdAt
       })
       .from(taskHierarchy)
@@ -501,10 +505,23 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(taskHierarchy.parentTaskId, parentTaskId),
         eq(tasks.userId, userId)
-      ));
+      ))
+      .orderBy(
+        sql`CASE WHEN ${taskHierarchy.sequence} IS NULL THEN 1 ELSE 0 END`,
+        asc(taskHierarchy.sequence),
+        sql`CASE WHEN ${tasks.priority} = 'High' THEN 1 WHEN ${tasks.priority} = 'Medium' THEN 2 WHEN ${tasks.priority} = 'Low' THEN 3 ELSE 4 END`,
+        asc(taskHierarchy.createdAt)
+      );
     } else {
       // Legacy behavior for backwards compatibility
-      return db.select().from(taskHierarchy).where(eq(taskHierarchy.parentTaskId, parentTaskId));
+      return db.select().from(taskHierarchy)
+        .where(eq(taskHierarchy.parentTaskId, parentTaskId))
+        .orderBy(
+          sql`CASE WHEN ${taskHierarchy.sequence} IS NULL THEN 1 ELSE 0 END`,
+          asc(taskHierarchy.sequence),
+          sql`CASE WHEN tasks.priority = 'High' THEN 1 WHEN tasks.priority = 'Medium' THEN 2 WHEN tasks.priority = 'Low' THEN 3 ELSE 4 END`,
+          asc(taskHierarchy.createdAt)
+        );
     }
   }
 
@@ -558,6 +575,50 @@ export class DatabaseStorage implements IStorage {
       .values(computedHierarchy)
       .returning();
     return newHierarchy;
+  }
+
+  async updateTaskHierarchy(id: string, userId: string, updates: { sequence?: number | null }): Promise<TaskHierarchy> {
+    // First verify the hierarchy exists and user owns both tasks
+    const hierarchyWithTasks = await db.select({
+      hierarchy: taskHierarchy,
+      parentTask: tasks,
+      childTask: {
+        id: sql`child_task.id`.as('child_task_id'),
+        userId: sql`child_task.user_id`.as('child_task_user_id')
+      }
+    })
+    .from(taskHierarchy)
+    .innerJoin(tasks, eq(taskHierarchy.parentTaskId, tasks.id))
+    .innerJoin(sql`tasks as child_task`, sql`task_hierarchy.child_task_id = child_task.id`)
+    .where(eq(taskHierarchy.id, id));
+
+    if (hierarchyWithTasks.length === 0) {
+      throw new Error("Hierarchy relationship not found");
+    }
+
+    const record = hierarchyWithTasks[0];
+    
+    // Verify both parent and child belong to the user
+    if (record.parentTask.userId !== userId || record.childTask.userId !== userId) {
+      throw new Error("Unauthorized: Cannot update hierarchy for tasks you don't own");
+    }
+
+    try {
+      const [updatedHierarchy] = await db
+        .update(taskHierarchy)
+        .set(updates)
+        .where(eq(taskHierarchy.id, id))
+        .returning();
+      return updatedHierarchy;
+    } catch (error: any) {
+      // Handle unique constraint violations for sequence conflicts
+      if (error?.code === '23505' && error?.constraint_name === 'unique_parent_sequence') {
+        const duplicateSequence = updates.sequence;
+        throw new Error(`SEQUENCE_CONFLICT:${duplicateSequence}`);
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   async deleteTaskHierarchy(id: string, userId: string): Promise<void> {
@@ -833,32 +894,56 @@ export class DatabaseStorage implements IStorage {
     tasks: Map<string, Task>;
     children: Map<string, string[]>;
     parents: Map<string, string>;
+    hierarchies: Map<string, TaskHierarchy[]>;
     roots: string[];
     leaves: string[];
   }> {
-    // Get all user tasks and hierarchies
+    // Get all user tasks and hierarchies with sequence information
     const [allTasks, allHierarchies] = await Promise.all([
       this.getTasks(userId),
-      db.select().from(taskHierarchy)
+      db.select({
+        id: taskHierarchy.id,
+        parentTaskId: taskHierarchy.parentTaskId,
+        childTaskId: taskHierarchy.childTaskId,
+        hierarchyLevel: taskHierarchy.hierarchyLevel,
+        sequence: taskHierarchy.sequence,
+        createdAt: taskHierarchy.createdAt
+      })
+        .from(taskHierarchy)
         .innerJoin(tasks, eq(taskHierarchy.childTaskId, tasks.id))
         .where(eq(tasks.userId, userId))
+        .orderBy(
+          asc(taskHierarchy.parentTaskId),
+          sql`CASE WHEN ${taskHierarchy.sequence} IS NULL THEN 1 ELSE 0 END`,
+          asc(taskHierarchy.sequence),
+          sql`CASE WHEN ${tasks.priority} = 'High' THEN 1 WHEN ${tasks.priority} = 'Medium' THEN 2 WHEN ${tasks.priority} = 'Low' THEN 3 ELSE 4 END`,
+          asc(taskHierarchy.createdAt)
+        )
     ]);
 
     // Build core data structures
     const taskMap = new Map(allTasks.map(task => [task.id, task]));
     const childrenMap = new Map<string, string[]>();
     const parentMap = new Map<string, string>();
+    const hierarchiesMap = new Map<string, TaskHierarchy[]>();
 
-    // Populate relationships
-    for (const hierarchy of allHierarchies) {
-      const parentId = hierarchy.task_hierarchy.parentTaskId;
-      const childId = hierarchy.task_hierarchy.childTaskId;
+    // Populate relationships with sequence-aware ordering
+    for (const hierarchyRecord of allHierarchies) {
+      const parentId = hierarchyRecord.parentTaskId;
+      const childId = hierarchyRecord.childTaskId;
       
+      // Add to children map (preserving sequence order from database sort)
       if (!childrenMap.has(parentId)) {
         childrenMap.set(parentId, []);
       }
       childrenMap.get(parentId)!.push(childId);
       parentMap.set(childId, parentId);
+
+      // Add to hierarchies map with full hierarchy data including sequence
+      if (!hierarchiesMap.has(parentId)) {
+        hierarchiesMap.set(parentId, []);
+      }
+      hierarchiesMap.get(parentId)!.push(hierarchyRecord);
     }
 
     // Identify roots (tasks with no parents) and leaves (tasks with no children)
@@ -874,6 +959,7 @@ export class DatabaseStorage implements IStorage {
       tasks: taskMap,
       children: childrenMap,
       parents: parentMap,
+      hierarchies: hierarchiesMap,
       roots,
       leaves
     };
