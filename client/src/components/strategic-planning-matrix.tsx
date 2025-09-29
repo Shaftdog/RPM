@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon, Trash2, ChevronDown, ChevronRight, TreePine, Folder, FolderOpen } from "lucide-react";
 import { format, isPast, isToday, isTomorrow, formatDistanceToNowStrict } from "date-fns";
@@ -1212,6 +1213,119 @@ export default function StrategicPlanningMatrix() {
                   {selectedTask.status}
                 </Badge>
               </div>
+
+              {/* Subtasks Section */}
+              {useMemo(() => {
+                if (!taskTree || !selectedTask) return null;
+                
+                const childrenIds = taskTree.children[selectedTask.id] || [];
+                const subtasks = childrenIds
+                  .map(id => taskTree.tasks[id])
+                  .filter(task => task && 
+                    task.status !== 'completed' && 
+                    !(task.description && task.description.startsWith('Recurring: '))
+                  );
+                
+                if (subtasks.length === 0) return null;
+                
+                const completedCount = childrenIds
+                  .map(id => taskTree.tasks[id])
+                  .filter(task => task && task.status === 'completed').length;
+                const totalCount = childrenIds.length;
+                
+                return (
+                  <div className="space-y-2" data-testid="section-subtasks">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <TreePine className="h-4 w-4 text-muted-foreground" />
+                        <Label className="text-sm font-medium">Subtasks</Label>
+                      </div>
+                      <div className="text-xs text-muted-foreground" data-testid="text-subtasks-summary">
+                        {completedCount} of {totalCount} completed
+                      </div>
+                    </div>
+                    
+                    <ScrollArea className="max-h-48 w-full rounded-md border">
+                      <div className="space-y-2 p-3">
+                        {subtasks.map(subtask => (
+                          <div
+                            key={subtask.id}
+                            className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
+                            onClick={() => {
+                              setSelectedTask(subtask);
+                              // Keep dialog open to show subtask details
+                            }}
+                            data-testid={`row-subtask-${subtask.id}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center space-x-2">
+                                <div className="font-medium text-sm truncate">
+                                  {subtask.name}
+                                </div>
+                                {subtask.timeHorizon === 'inherit' && (
+                                  <Badge variant="outline" className="text-xs">
+                                    inherits
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {subtask.type} • {subtask.estimatedTime}h • {subtask.priority}
+                                {subtask.progress > 0 && ` • ${subtask.progress}%`}
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center space-x-2 ml-2">
+                              {subtask.progress > 0 && (
+                                <div className="w-16">
+                                  <Progress value={subtask.progress} className="h-1" />
+                                </div>
+                              )}
+                              <Badge 
+                                variant={subtask.status === 'completed' ? 'default' : 'outline'}
+                                className="text-xs"
+                              >
+                                {subtask.status}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedTask(subtask);
+                                }}
+                                data-testid={`button-open-subtask-${subtask.id}`}
+                              >
+                                <ChevronRight className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                    
+                    {/* Back to Parent Button (if viewing a subtask) */}
+                    {taskTree.parents[selectedTask.id] && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const parentId = taskTree.parents[selectedTask.id];
+                          const parentTask = taskTree.tasks[parentId];
+                          if (parentTask) {
+                            setSelectedTask(parentTask);
+                          }
+                        }}
+                        className="w-full"
+                        data-testid="button-back-to-parent"
+                      >
+                        <ChevronDown className="h-4 w-4 mr-2" />
+                        Back to Parent: {taskTree.tasks[taskTree.parents[selectedTask.id]]?.name}
+                      </Button>
+                    )}
+                  </div>
+                );
+              }, [selectedTask?.id, taskTree])}
 
               {/* Task ID for reference */}
               <div className="pt-4 border-t">
