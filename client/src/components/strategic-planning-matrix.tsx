@@ -1219,19 +1219,21 @@ export default function StrategicPlanningMatrix() {
                 if (!taskTree || !selectedTask) return null;
                 
                 const childrenIds = taskTree.children[selectedTask.id] || [];
-                const subtasks = childrenIds
-                  .map(id => taskTree.tasks[id])
-                  .filter(task => task && 
-                    task.status !== 'completed' && 
-                    !(task.description && task.description.startsWith('Recurring: '))
-                  );
+                if (childrenIds.length === 0) return null; // No children at all
                 
-                if (subtasks.length === 0) return null;
+                // Filter active subtasks for display (exclude completed and recurring)
+                const allChildren = childrenIds.map(id => taskTree.tasks[id]).filter(task => task);
+                const activeSubtasks = allChildren.filter(task => 
+                  task.status !== 'completed' && 
+                  !(task.description && task.description.startsWith('Recurring: '))
+                );
                 
-                const completedCount = childrenIds
-                  .map(id => taskTree.tasks[id])
-                  .filter(task => task && task.status === 'completed').length;
-                const totalCount = childrenIds.length;
+                // Calculate consistent progress summary (excluding recurring instances)
+                const relevantChildren = allChildren.filter(task => 
+                  !(task.description && task.description.startsWith('Recurring: '))
+                );
+                const completedCount = relevantChildren.filter(task => task.status === 'completed').length;
+                const totalCount = relevantChildren.length;
                 
                 return (
                   <div className="space-y-2" data-testid="section-subtasks">
@@ -1247,7 +1249,7 @@ export default function StrategicPlanningMatrix() {
                     
                     <ScrollArea className="max-h-48 w-full rounded-md border">
                       <div className="space-y-2 p-3">
-                        {subtasks.map(subtask => (
+                        {activeSubtasks.length > 0 ? activeSubtasks.map(subtask => (
                           <div
                             key={subtask.id}
                             className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
@@ -1300,7 +1302,15 @@ export default function StrategicPlanningMatrix() {
                               </Button>
                             </div>
                           </div>
-                        ))}
+                        )) : (
+                          <div className="text-center py-4 text-muted-foreground" data-testid="text-subtasks-empty">
+                            <div className="text-sm">
+                              {completedCount > 0 
+                                ? "All subtasks completed!" 
+                                : "No active subtasks"}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </ScrollArea>
                     
