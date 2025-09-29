@@ -860,7 +860,7 @@ export default function StrategicPlanningMatrix() {
                         return (
                           <td
                             key={category}
-                            className={`px-3 py-4 min-h-[120px] align-top ${
+                            className={`px-3 py-4 min-h-[120px] max-h-[400px] align-top ${
                               horizon === 'Today' 
                                 ? isPersonal ? 'bg-personal/10' : 'bg-business/10'
                                 : horizon === 'BACKLOG' 
@@ -871,7 +871,7 @@ export default function StrategicPlanningMatrix() {
                             onDragOver={handleDragOver}
                             data-testid={`cell-${horizon}-${category}`}
                           >
-                            <div className="space-y-1">
+                            <div className="space-y-1 overflow-y-auto max-h-[360px]">
                               {rootTasks.map(task => {
                                 if (showSubtasks) {
                                   // Use hierarchical rendering when subtasks are shown
