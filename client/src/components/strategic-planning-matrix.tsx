@@ -1331,7 +1331,7 @@ export default function StrategicPlanningMatrix() {
                       </div>
                     </div>
                     
-                    <ScrollArea className="max-h-48 w-full rounded-md border">
+                    <ScrollArea className="max-h-96 w-full rounded-md border">
                       <div className="space-y-2 p-3">
                         {activeSubtasks.length > 0 ? activeSubtasks.map(item => {
                           const subtask = item.task;
