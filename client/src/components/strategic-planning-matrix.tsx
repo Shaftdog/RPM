@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
 import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon, Trash2, ChevronDown, ChevronRight, TreePine, Folder, FolderOpen, Flag } from "lucide-react";
 import { format, isPast, isToday, isTomorrow, formatDistanceToNowStrict } from "date-fns";
@@ -87,7 +88,28 @@ export default function StrategicPlanningMatrix() {
   const [sequenceValue, setSequenceValue] = useState<string>(''); // current sequence input value
   const [showSubtasks, setShowSubtasks] = useState(true);
   const [selectedParentTaskId, setSelectedParentTaskId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'All' | 'Personal' | 'Business'>(() => {
+    const saved = localStorage.getItem('spmViewMode');
+    return (saved as 'All' | 'Personal' | 'Business') || 'All';
+  });
   const { toast } = useToast();
+
+  // Save viewMode to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('spmViewMode', viewMode);
+  }, [viewMode]);
+
+  // Define category arrays
+  const personalCategories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure'];
+  const businessCategories = ['Marketing', 'Sales', 'Operations', 'Products', 'Production'];
+  const allCategories = [...personalCategories, ...businessCategories];
+
+  // Compute displayed categories based on view mode
+  const displayedCategories = useMemo(() => {
+    if (viewMode === 'Personal') return personalCategories;
+    if (viewMode === 'Business') return businessCategories;
+    return allCategories;
+  }, [viewMode]);
 
   // Fetch tasks with rollup calculations
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
@@ -350,7 +372,7 @@ export default function StrategicPlanningMatrix() {
 
   // Organize tasks by matrix structure
   const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Quarter', 'Month', 'Week', 'Today', 'BACKLOG'];
-  const categories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure', 'Marketing', 'Sales', 'Operations', 'Products', 'Production'];
+  const categories = allCategories; // Use the combined category array
 
   const matrix: Record<string, Record<string, Task[]>> = {};
   timeHorizons.forEach(horizon => {
@@ -826,16 +848,29 @@ export default function StrategicPlanningMatrix() {
                   Drag tasks between time horizons and categories
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={toggleShowSubtasks}
-                className="flex items-center space-x-2"
-                data-testid="button-toggle-subtasks"
-              >
-                {showSubtasks ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
-                <span>{showSubtasks ? 'Hide Subtasks' : 'Show Subtasks'}</span>
-              </Button>
+              <div className="flex items-center gap-3">
+                <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as 'All' | 'Personal' | 'Business')}>
+                  <ToggleGroupItem value="All" aria-label="Show all categories" data-testid="toggle-view-all">
+                    All
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="Personal" aria-label="Show personal categories" data-testid="toggle-view-personal">
+                    Personal
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="Business" aria-label="Show business categories" data-testid="toggle-view-business">
+                    Business
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleShowSubtasks}
+                  className="flex items-center space-x-2"
+                  data-testid="button-toggle-subtasks"
+                >
+                  {showSubtasks ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
+                  <span>{showSubtasks ? 'Hide Subtasks' : 'Show Subtasks'}</span>
+                </Button>
+              </div>
             </div>
           </CardHeader>
           
@@ -847,16 +882,14 @@ export default function StrategicPlanningMatrix() {
                     <th className="px-3 py-4 text-left text-sm font-medium text-muted-foreground w-32">
                       Time Horizon
                     </th>
-                    {categories.slice(0, 6).map(cat => (
-                      <th key={cat} className="px-3 py-4 text-center text-xs font-medium text-personal uppercase tracking-wider bg-personal/5">
-                        {cat}
-                      </th>
-                    ))}
-                    {categories.slice(6).map(cat => (
-                      <th key={cat} className="px-3 py-4 text-center text-xs font-medium text-business uppercase tracking-wider bg-business/5">
-                        {cat}
-                      </th>
-                    ))}
+                    {displayedCategories.map(cat => {
+                      const isPersonal = personalCategories.includes(cat);
+                      return (
+                        <th key={cat} className={`px-3 py-4 text-center text-xs font-medium uppercase tracking-wider ${isPersonal ? 'text-personal bg-personal/5' : 'text-business bg-business/5'}`}>
+                          {cat}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -865,9 +898,9 @@ export default function StrategicPlanningMatrix() {
                       <td className={`px-3 py-4 font-medium text-sm text-foreground ${horizon === 'Today' ? 'bg-yellow-100' : 'bg-accent/30'}`}>
                         {horizon}
                       </td>
-                      {categories.map(category => {
+                      {displayedCategories.map(category => {
                         const { rootTasks, cellTaskIds } = buildHierarchicalTasksForCell(horizon, category);
-                        const isPersonal = categories.indexOf(category) < 6;
+                        const isPersonal = personalCategories.includes(category);
                         
                         return (
                           <td
@@ -890,7 +923,7 @@ export default function StrategicPlanningMatrix() {
                                   return renderTaskHierarchy(task, 0, horizon, category, cellTaskIds);
                                 } else {
                                   // Use simple flat rendering when subtasks are hidden
-                                  const isPersonal = categories.indexOf(category) < 6;
+                                  const isPersonal = personalCategories.includes(category);
                                   return (
                                     <div
                                       key={task.id}
