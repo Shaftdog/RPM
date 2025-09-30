@@ -35,7 +35,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon, Trash2, ChevronDown, ChevronRight, TreePine, Folder, FolderOpen } from "lucide-react";
+import { Filter, BarChart3, Clock, Target, Calendar, User, Tag, Edit3, Save, X, HelpCircle, CalendarIcon, Trash2, ChevronDown, ChevronRight, TreePine, Folder, FolderOpen, Flag } from "lucide-react";
 import { format, isPast, isToday, isTomorrow, formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { TaskHierarchy } from "@shared/schema";
@@ -643,6 +643,7 @@ export default function StrategicPlanningMatrix() {
 
     const elements: React.ReactNode[] = [];
     const isPersonal = categories.indexOf(category) < 6;
+    const isMilestone = task.type === 'Milestone' || task.type === 'Sub-Milestone';
     
     // Count all children, not just those in the same cell
     const allChildren = taskTree.children[task.id] || [];
@@ -678,7 +679,8 @@ export default function StrategicPlanningMatrix() {
             ? `bg-personal/20 border-personal ${horizon === 'Today' ? 'bg-personal/30' : ''}`
             : `bg-business/20 border-business ${horizon === 'Today' ? 'bg-business/30' : ''}`,
           'hover:opacity-80 transition-opacity',
-          depth > 0 && 'ml-4 border-l-2 border-dashed border-muted-foreground/30'
+          depth > 0 && 'ml-4 border-l-2 border-dashed border-muted-foreground/30',
+          isMilestone && 'ring-1 ring-amber-400/50 shadow-sm bg-amber-50/30 dark:bg-amber-950/20'
         )}
         style={{ marginLeft: `${depth * 16}px` }}
         data-testid={`task-card-${task.id}`}
@@ -714,7 +716,17 @@ export default function StrategicPlanningMatrix() {
                   <Folder className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
                 )
               )}
-              <div className="font-medium truncate">{task.name}</div>
+              <div className="flex items-center gap-1">
+                {isMilestone && (
+                  <Flag className="h-3 w-3 text-amber-600 flex-shrink-0" data-testid={`icon-milestone-${task.id}`} />
+                )}
+                <div className="font-medium truncate">{task.name}</div>
+                {isMilestone && (
+                  <Badge variant="outline" className="ml-1 px-1.5 py-0 h-4 text-[10px] border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-950/30" data-testid={`badge-milestone-${task.id}`}>
+                    Milestone
+                  </Badge>
+                )}
+              </div>
             </div>
             
             <div className={cn(
