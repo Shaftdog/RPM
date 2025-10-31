@@ -534,7 +534,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Organize tasks by time horizon and category
       const matrix: Record<string, Record<string, any[]>> = {};
-      const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Quarter', 'Week', 'Today', 'BACKLOG'];
+      const timeHorizons = ['VISION', '10 Year', '5 Year', '1 Year', 'Quarter', 'Month', 'Week', 'Today', 'BACKLOG'];
       const categories = ['Physical', 'Mental', 'Relationship', 'Environmental', 'Financial', 'Adventure', 'Marketing', 'Sales', 'Operations', 'Products', 'Production'];
       
       timeHorizons.forEach(horizon => {
@@ -565,7 +565,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate request body with Zod schema
       const moveTaskSchema = z.object({
         taskId: z.string().uuid(),
-        newTimeHorizon: z.enum(["VISION", "10 Year", "5 Year", "1 Year", "Quarter", "Week", "Today", "BACKLOG"]).optional(),
+        newTimeHorizon: z.enum(["VISION", "10 Year", "5 Year", "1 Year", "Quarter", "Month", "Week", "Today", "BACKLOG"]).optional(),
         newSubcategory: z.enum(["Physical", "Mental", "Relationship", "Environmental", "Financial", "Adventure", "Marketing", "Sales", "Operations", "Products", "Production"]).optional(),
         newCategory: z.enum(["Personal", "Business"]).optional(),
         xDate: z.string().datetime().optional(),
