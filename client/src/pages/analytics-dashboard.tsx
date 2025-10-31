@@ -15,7 +15,8 @@ import {
   Zap,
   Award,
   Filter,
-  Eye
+  Eye,
+  Repeat
 } from "lucide-react";
 import { format, subDays, isWithinInterval } from "date-fns";
 
@@ -40,6 +41,21 @@ interface CompletedTask {
   updatedAt: string;
 }
 
+interface RecurringTask {
+  id: string;
+  taskName: string;
+  taskType: string;
+  timeBlock: string;
+  daysOfWeek: string[];
+  category: "Personal" | "Business";
+  subcategory: string;
+  durationMinutes: number;
+  energyImpact: number;
+  priority: "High" | "Medium" | "Low";
+  isActive: boolean;
+  description?: string;
+}
+
 export default function AnalyticsDashboard() {
   const [timeRange, setTimeRange] = useState("7"); // days
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -47,6 +63,10 @@ export default function AnalyticsDashboard() {
 
   const { data: allTasks = [], isLoading } = useQuery<CompletedTask[]>({
     queryKey: ['/api/tasks'],
+  });
+
+  const { data: recurringTasks = [], isLoading: isLoadingRecurring } = useQuery<RecurringTask[]>({
+    queryKey: ['/api/recurring-tasks'],
   });
 
   // Filter to only completed tasks
@@ -114,7 +134,32 @@ export default function AnalyticsDashboard() {
 
   const netCalories = analytics.totalCaloriesGained - analytics.totalCaloriesSpent;
 
-  if (isLoading) {
+  // Calculate recurring tasks analytics
+  const activeRecurringTasks = categoryFilter === "all"
+    ? recurringTasks.filter(t => t.isActive)
+    : recurringTasks.filter(t => t.isActive && t.category.toLowerCase() === categoryFilter);
+
+  const recurringAnalytics = {
+    totalActive: activeRecurringTasks.length,
+    personalRecurring: activeRecurringTasks.filter(t => t.category === 'Personal').length,
+    businessRecurring: activeRecurringTasks.filter(t => t.category === 'Business').length,
+    totalWeeklyMinutes: activeRecurringTasks.reduce((sum, task) => 
+      sum + (task.durationMinutes * task.daysOfWeek.length), 0),
+    totalEnergyImpact: activeRecurringTasks.reduce((sum, task) => 
+      sum + (task.energyImpact || 0), 0),
+    highPriorityRecurring: activeRecurringTasks.filter(t => t.priority === 'High').length,
+    categoryBreakdown: {} as Record<string, number>,
+  };
+
+  // Category breakdown for recurring tasks
+  activeRecurringTasks.forEach(task => {
+    recurringAnalytics.categoryBreakdown[task.subcategory] = 
+      (recurringAnalytics.categoryBreakdown[task.subcategory] || 0) + 1;
+  });
+
+  const weeklyHours = recurringAnalytics.totalWeeklyMinutes / 60;
+
+  if (isLoading || isLoadingRecurring) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
@@ -252,6 +297,72 @@ export default function AnalyticsDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Recurring Tasks Section */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Repeat className="h-5 w-5" />
+                    Active Recurring Tasks
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">Your ongoing weekly commitments</p>
+                </div>
+                <Badge variant="outline" className="text-lg px-3" data-testid="badge-recurring-count">
+                  {recurringAnalytics.totalActive}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div className="text-center p-4 bg-muted/50 rounded-lg">
+                  <div className="text-2xl font-bold text-primary" data-testid="text-weekly-hours">
+                    {weeklyHours.toFixed(1)}h
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">Weekly Time Commitment</p>
+                </div>
+                <div className="text-center p-4 bg-muted/50 rounded-lg">
+                  <div className={`text-2xl font-bold ${recurringAnalytics.totalEnergyImpact >= 0 ? 'text-green-600' : 'text-red-600'}`} 
+                       data-testid="text-recurring-energy">
+                    {recurringAnalytics.totalEnergyImpact > 0 ? '+' : ''}{recurringAnalytics.totalEnergyImpact}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">Total Energy Impact</p>
+                </div>
+                <div className="text-center p-4 bg-muted/50 rounded-lg">
+                  <div className="text-2xl font-bold text-primary" data-testid="text-recurring-high-priority">
+                    {recurringAnalytics.highPriorityRecurring}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">High Priority Tasks</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="font-medium text-sm">Category Distribution</h4>
+                {Object.entries(recurringAnalytics.categoryBreakdown).length > 0 ? (
+                  Object.entries(recurringAnalytics.categoryBreakdown)
+                    .sort(([,a], [,b]) => b - a)
+                    .slice(0, 6)
+                    .map(([category, count]) => (
+                      <div key={category} className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Badge variant="outline">{category}</Badge>
+                          <span className="text-sm text-muted-foreground">{count} tasks</span>
+                        </div>
+                        <Progress 
+                          value={(count / recurringAnalytics.totalActive) * 100} 
+                          className="w-20"
+                        />
+                      </div>
+                    ))
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No active recurring tasks found
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Category Breakdown */}
           <Card>
