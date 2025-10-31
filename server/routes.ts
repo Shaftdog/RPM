@@ -1197,6 +1197,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/daily/completed/all', isAuthenticated, async (req: any, res) => {
+    try {
+      const startDate = req.query.startDate ? new Date(req.query.startDate) : undefined;
+      const endDate = req.query.endDate ? new Date(req.query.endDate) : undefined;
+      const completedEntries = await storage.getCompletedDailyScheduleEntries(req.user.id, startDate, endDate);
+      res.json(completedEntries);
+    } catch (error) {
+      console.error("Error fetching completed daily schedule entries:", error);
+      res.status(500).json({ message: "Failed to fetch completed daily schedule entries" });
+    }
+  });
+
   // Manual add task to existing quarter (converts to MULTIPLE_TASKS format)
   app.post('/api/daily/add-to-quarter', isAuthenticated, async (req: any, res) => {
     try {

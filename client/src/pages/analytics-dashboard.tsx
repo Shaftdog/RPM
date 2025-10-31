@@ -56,6 +56,17 @@ interface RecurringTask {
   description?: string;
 }
 
+interface CompletedDailyScheduleEntry {
+  id: string;
+  date: string;
+  timeBlock: string;
+  quartile: number;
+  status: "completed";
+  reflection?: string;
+  energyImpact?: number;
+  updatedAt: string;
+}
+
 export default function AnalyticsDashboard() {
   const [timeRange, setTimeRange] = useState("7"); // days
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -69,10 +80,15 @@ export default function AnalyticsDashboard() {
     queryKey: ['/api/recurring-tasks'],
   });
 
+  // Fetch completed daily schedule entries (includes completed recurring tasks)
+  const { data: completedDailyEntries = [], isLoading: isLoadingCompleted } = useQuery<CompletedDailyScheduleEntry[]>({
+    queryKey: ['/api/daily/completed/all'],
+  });
+
   // Filter to only completed tasks
   const completedTasks = allTasks.filter(task => task.status === 'completed');
 
-  // Apply time range filter
+  // Apply time range filter to tasks
   const filteredTasks = completedTasks.filter(task => {
     if (timeRange === "all") return true;
     
@@ -89,14 +105,37 @@ export default function AnalyticsDashboard() {
     return isWithinInterval(taskDate, { start: rangeStart, end: new Date() });
   });
 
+  // Apply time range filter to daily schedule entries
+  const filteredDailyEntries = completedDailyEntries.filter(entry => {
+    if (timeRange === "all") return true;
+    
+    const days = parseInt(timeRange);
+    const entryDate = new Date(entry.date || entry.updatedAt);
+    
+    // Guard against invalid dates
+    if (isNaN(entryDate.getTime())) {
+      return timeRange === "all";
+    }
+    
+    const rangeStart = subDays(new Date(), days);
+    
+    return isWithinInterval(entryDate, { start: rangeStart, end: new Date() });
+  });
+
   // Apply category filter
   const displayTasks = categoryFilter === "all" 
     ? filteredTasks 
     : filteredTasks.filter(task => task.category.toLowerCase() === categoryFilter);
 
-  // Calculate analytics
+  // For daily entries, we can't filter by category as they don't have category info
+  // We'll count all completed daily entries regardless of category filter
+  const displayDailyEntries = filteredDailyEntries;
+
+  // Calculate analytics including both regular tasks and daily schedule entries
   const analytics = {
-    totalCompleted: displayTasks.length,
+    totalCompleted: displayTasks.length + displayDailyEntries.length,
+    regularTasksCompleted: displayTasks.length,
+    recurringTasksCompleted: displayDailyEntries.length,
     personalTasks: displayTasks.filter(t => t.category === 'Personal').length,
     businessTasks: displayTasks.filter(t => t.category === 'Business').length,
     highPriority: displayTasks.filter(t => t.priority === 'High').length,
@@ -159,7 +198,7 @@ export default function AnalyticsDashboard() {
 
   const weeklyHours = recurringAnalytics.totalWeeklyMinutes / 60;
 
-  if (isLoading || isLoadingRecurring) {
+  if (isLoading || isLoadingRecurring || isLoadingCompleted) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
@@ -248,7 +287,7 @@ export default function AnalyticsDashboard() {
               <CardContent>
                 <div className="text-2xl font-bold" data-testid="text-total-completed">{analytics.totalCompleted}</div>
                 <p className="text-xs text-muted-foreground">
-                  {analytics.personalTasks} Personal • {analytics.businessTasks} Business
+                  {analytics.regularTasksCompleted} tasks • {analytics.recurringTasksCompleted} recurring
                 </p>
               </CardContent>
             </Card>

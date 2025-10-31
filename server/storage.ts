@@ -470,6 +470,30 @@ export class DatabaseStorage implements IStorage {
       ));
   }
 
+  async getCompletedDailyScheduleEntries(userId: string, startDate?: Date, endDate?: Date): Promise<DailySchedule[]> {
+    const conditions = [
+      eq(dailySchedules.userId, userId),
+      eq(dailySchedules.status, 'completed')
+    ];
+
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      conditions.push(gte(dailySchedules.date, start));
+    }
+
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(dailySchedules.date, end));
+    }
+
+    return db.select()
+      .from(dailySchedules)
+      .where(and(...conditions))
+      .orderBy(asc(dailySchedules.date));
+  }
+
   // Task dependency operations
   async getTaskDependencies(taskId: string): Promise<TaskDependency[]> {
     return db.select().from(taskDependencies).where(eq(taskDependencies.taskId, taskId));
