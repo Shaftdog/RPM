@@ -183,6 +183,7 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
     const quarterDuration = blockDuration / 4;
     
     // First, place recurring tasks in their preferred quarters (if any)
+    // IMPORTANT: Skip if slot is already occupied (preserved from existing schedule)
     todaysRecurringTasks.forEach(recurringTask => {
       // More flexible time block matching
       const blockNameUpper = block.name.toUpperCase();
@@ -204,6 +205,14 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
       if (blockMatches) {
         const quarterNum = recurringTask.quarter || 1; // Default to Q1 if no quarter specified
         const quarterKey = `Q${quarterNum}`;
+        const slotKey = `${block.name}:${quarterNum}`;
+        
+        // Check if this slot is already occupied (preserved from existing schedule)
+        if (occupiedSlots && occupiedSlots.has(slotKey)) {
+          console.log(`Skipping recurring task ${recurringTask.taskName} - slot ${slotKey} already preserved`);
+          return;
+        }
+        
         if (quarterKey in schedule[block.name]) {
           console.log(`Placing ${recurringTask.taskName} in ${block.name} ${quarterKey}`);
           schedule[block.name][quarterKey].push({
@@ -399,7 +408,7 @@ export async function generateDailySchedule(
   } catch (error) {
     console.error("Error generating daily schedule:", error);
     console.log("Falling back to local scheduler");
-    return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
+    return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences, occupiedSlots);
   }
 }
 

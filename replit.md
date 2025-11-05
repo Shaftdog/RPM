@@ -79,3 +79,4 @@ Preferred communication style: Simple, everyday language.
 - Energy level tracking and optimization
 - Reflection and actual vs planned comparison
 - Recurring task integration with daily schedules
+- AI schedule generation that preserves recurring tasks: when generating an AI schedule, existing recurring tasks (marked with RECURRING_TASK: prefix in reflection field) are identified and preserved, with AI only filling unoccupied time slots
