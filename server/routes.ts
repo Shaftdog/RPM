@@ -989,6 +989,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { date } = req.body;
       const userId = req.user.id;
       
+      // PRESERVE RECURRING TASKS: Fetch existing schedule to identify recurring task slots
+      const scheduleDate = new Date(date);
+      const existingSchedule = await storage.getDailySchedule(userId, scheduleDate);
+      
+      // Identify which slots are occupied by recurring tasks (marked with RECURRING_TASK: prefix)
+      const recurringSlots = new Set<string>();
+      const preservedRecurringEntries: any[] = [];
+      
+      existingSchedule.forEach(entry => {
+        if (entry.reflection && entry.reflection.startsWith('RECURRING_TASK:')) {
+          const slotKey = `${entry.timeBlock}:${entry.quartile}`;
+          recurringSlots.add(slotKey);
+          preservedRecurringEntries.push({
+            date: entry.date,
+            timeBlock: entry.timeBlock,
+            quartile: entry.quartile,
+            plannedTaskId: entry.plannedTaskId || null,
+            status: entry.status,
+            reflection: entry.reflection,
+            energyImpact: entry.energyImpact || 0
+          });
+        }
+      });
+      
+      console.log(`Preserving ${preservedRecurringEntries.length} recurring task slots:`, 
+        Array.from(recurringSlots));
+      
       // Get available tasks and recurring tasks with instrumentation
       console.time('fetch_tasks');
       const tasks = await storage.getTasks(userId, { 
@@ -1021,7 +1048,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.time('generate_schedule');
       // Pass empty array for recurring tasks since they're handled by "Sync to Daily"
-      const aiSchedule = await generateDailySchedule(tasksForScheduling, [], userPreferences);
+      // Also pass the occupied slots so AI knows which slots to avoid
+      const aiSchedule = await generateDailySchedule(
+        tasksForScheduling, 
+        [], 
+        userPreferences,
+        recurringSlots
+      );
       console.timeEnd('generate_schedule');
       
       // Build task name index for name→ID lookup (only from schedulable tasks)
@@ -1031,7 +1064,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Normalize AI schedule to database entries
-      const scheduleDate = new Date(date);
       const scheduleEntries = normalizeAIScheduleToEntries(aiSchedule, scheduleDate, nameToId);
       
       // Final guard: Filter out any entries that reference Milestone or Sub-Milestone tasks
@@ -1042,11 +1074,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         !entry.plannedTaskId || allowedIdSet.has(entry.plannedTaskId)
       );
       
-      // Clear existing schedule for this date and save new entries
-      if (filteredScheduleEntries.length > 0) {
-        console.log(`Saving ${filteredScheduleEntries.length} schedule entries for ${date}`);
+      // MERGE: Combine preserved recurring entries with AI-generated entries
+      // Remove AI entries that conflict with recurring slots
+      const nonConflictingEntries = filteredScheduleEntries.filter(entry => {
+        const slotKey = `${entry.timeBlock}:${entry.quartile}`;
+        return !recurringSlots.has(slotKey);
+      });
+      
+      const finalEntries = [...preservedRecurringEntries, ...nonConflictingEntries];
+      
+      // Clear existing schedule for this date and save merged entries
+      if (finalEntries.length > 0) {
+        console.log(`Saving ${finalEntries.length} schedule entries (${preservedRecurringEntries.length} recurring + ${nonConflictingEntries.length} AI-generated) for ${date}`);
         await storage.clearDailySchedule(userId, scheduleDate);
-        await storage.createDailyScheduleEntries(userId, filteredScheduleEntries);
+        await storage.createDailyScheduleEntries(userId, finalEntries);
       }
       
       res.json(aiSchedule);

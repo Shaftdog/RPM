@@ -143,7 +143,7 @@ function extractTasksLocally(content: string): ExtractedTask[] {
 }
 
 // Local fallback scheduler when OpenAI is unavailable
-function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferences: any): any {
+function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferences: any, occupiedSlots?: Set<string>): any {
   // Use same format as OpenAI output
   const schedule: Record<string, Record<string, Array<{taskName: string, durationMinutes: number}>>> = {};
   
@@ -217,6 +217,13 @@ function generateLocalSchedule(tasks: any[], recurringTasks: any[], userPreferen
     // Then fill remaining quarters with available tasks or placeholders
     for (let i = 1; i <= 4; i++) {
       const quarterKey = `Q${i}`;
+      const slotKey = `${block.name}:${i}`;
+      
+      // Skip if this slot is occupied by a recurring task
+      if (occupiedSlots && occupiedSlots.has(slotKey)) {
+        console.log(`Skipping occupied slot: ${slotKey}`);
+        continue;
+      }
       
       if (schedule[block.name][quarterKey].length === 0) {
         let targetTask = null;
@@ -281,7 +288,8 @@ export async function generateDailySchedule(
   userPreferences: {
     workHours: { start: string; end: string };
     energyPatterns?: Record<string, number>;
-  }
+  },
+  occupiedSlots?: Set<string>
 ): Promise<any> {
   // Defensive filtering: exclude Milestones and Sub-Milestones from scheduling
   // These are deliverables, not actionable tasks that should be time-blocked
@@ -296,7 +304,7 @@ export async function generateDailySchedule(
   
   if (!hasValidKey) {
     console.log("OpenAI API key not configured, using local fallback scheduler");
-    return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences);
+    return generateLocalSchedule(filteredTasks, recurringTasks, userPreferences, occupiedSlots);
   }
 
   try {
@@ -324,27 +332,34 @@ export async function generateDailySchedule(
     console.log(`DEBUG: Sending ${trimmedRecurring.length} recurring tasks to AI:`, 
       trimmedRecurring.map(rt => rt.taskName));
 
+    // Format occupied slots for the AI prompt
+    const occupiedSlotsList = occupiedSlots && occupiedSlots.size > 0 
+      ? Array.from(occupiedSlots).map(slot => {
+          const [block, quarter] = slot.split(':');
+          return { timeBlock: block, quarter: parseInt(quarter) };
+        })
+      : [];
+
     const prompt = `
-    Generate a daily schedule that includes ALL recurring tasks plus available regular tasks.
+    Generate a daily schedule that fills available time slots with regular tasks.
     
     Available Tasks: ${JSON.stringify(trimmedTasks)}
-    Recurring Tasks (ALL MUST BE SCHEDULED): ${JSON.stringify(trimmedRecurring)}
     User Preferences: ${JSON.stringify(userPreferences)}
     
     Time Blocks: Recover, PHYSICAL MENTAL, CHIEF PROJECT, HOUR OF POWER, PRODUCTION WORK, COMPANY BLOCK, BUSINESS AUTOMATION, ENVIRONMENTAL, FLEXIBLE BLOCK, WIND DOWN
     
+    OCCUPIED SLOTS (DO NOT SCHEDULE IN THESE): ${JSON.stringify(occupiedSlotsList)}
+    
     CRITICAL REQUIREMENTS:
-    1. YOU MUST SCHEDULE EVERY SINGLE RECURRING TASK from the "Recurring Tasks" list above
-    2. Each recurring task must be placed in its designated timeBlock and quarter if specified
-    3. ONLY use exact task names from the provided lists - DO NOT create or invent new tasks
-    4. After placing ALL recurring tasks, fill remaining slots with available tasks by priority
-    5. If no tasks are available for a quartile, simply omit that quartile from the JSON
+    1. DO NOT schedule any tasks in the occupied slots listed above - these contain recurring tasks
+    2. ONLY use exact task names from the "Available Tasks" list - DO NOT create or invent new tasks
+    3. Fill remaining available slots with tasks by priority
+    4. If no tasks are available for a quartile, simply omit that quartile from the JSON
     
     Task Placement Priority:
-    1. FIRST: All recurring tasks in their designated time blocks/quarters
-    2. THEN: High priority tasks in early quartiles (Q1, Q2)
-    3. THEN: Medium priority tasks in middle quartiles (Q2, Q3)
-    4. THEN: Low priority tasks in later quartiles (Q3, Q4)
+    1. High priority tasks in early quartiles (Q1, Q2)
+    2. Medium priority tasks in middle quartiles (Q2, Q3)
+    3. Low priority tasks in later quartiles (Q3, Q4)
     
     Return JSON format (only include quartiles that have actual tasks):
     {
