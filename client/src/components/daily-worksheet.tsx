@@ -336,6 +336,9 @@ export default function DailyWorksheet() {
   } | null>(null);
   const [skipRecurringToday, setSkipRecurringToday] = useState(true);
   
+  // Clear schedule confirmation dialog
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  
   // Top panel state
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
     try {
@@ -668,6 +671,27 @@ export default function DailyWorksheet() {
     onError: (error) => {
       toast({
         title: "Failed to generate schedule",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const clearScheduleMutation = useMutation({
+    mutationFn: async (date: string) => {
+      const response = await apiRequest("POST", `/api/daily/clear/${date}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/daily', selectedDate] });
+      toast({
+        title: "Schedule cleared",
+        description: "All tasks have been removed from today's schedule",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to clear schedule",
         description: error.message,
         variant: "destructive",
       });
@@ -1774,6 +1798,15 @@ export default function DailyWorksheet() {
               >
                 Generate AI Schedule
               </Button>
+              <Button 
+                variant="destructive"
+                onClick={() => setShowClearConfirm(true)}
+                disabled={clearScheduleMutation.isPending}
+                data-testid="button-clear-schedule"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Clear Schedule
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -2453,6 +2486,33 @@ export default function DailyWorksheet() {
               data-testid="button-confirm-remove"
             >
               {updateScheduleMutation.isPending ? 'Removing...' : 'Remove'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear Schedule Confirmation Dialog */}
+      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear entire schedule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all tasks from your schedule for {new Date(selectedDate).toLocaleDateString()}. 
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-clear">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={clearScheduleMutation.isPending}
+              onClick={() => {
+                clearScheduleMutation.mutate(selectedDate);
+                setShowClearConfirm(false);
+              }}
+              data-testid="button-confirm-clear"
+            >
+              {clearScheduleMutation.isPending ? 'Clearing...' : 'Clear Schedule'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
