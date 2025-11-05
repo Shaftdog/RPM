@@ -339,6 +339,9 @@ export default function DailyWorksheet() {
   // Clear schedule confirmation dialog
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   
+  // Current date/time widget
+  const [currentDateTime, setCurrentDateTime] = useState(new Date());
+  
   // Top panel state
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
     try {
@@ -371,6 +374,14 @@ export default function DailyWorksheet() {
   });
   
   const { toast } = useToast();
+
+  // Update current date/time every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentDateTime(new Date());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Timer effect for work timer
   useEffect(() => {
@@ -1745,6 +1756,27 @@ export default function DailyWorksheet() {
                   className="w-auto"
                   data-testid="input-date-selector"
                 />
+              </div>
+              <div className="flex items-center space-x-2 px-4 py-2 bg-muted/50 rounded-md border" data-testid="widget-current-datetime">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium leading-none">
+                    {currentDateTime.toLocaleDateString('en-US', { 
+                      weekday: 'short', 
+                      month: 'short', 
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </span>
+                  <span className="text-lg font-mono font-bold leading-none mt-1">
+                    {currentDateTime.toLocaleTimeString('en-US', { 
+                      hour: '2-digit', 
+                      minute: '2-digit', 
+                      second: '2-digit',
+                      hour12: true 
+                    })}
+                  </span>
+                </div>
               </div>
               <div className="text-sm">
                 <span className="text-muted-foreground">Total Work:</span>

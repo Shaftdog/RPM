@@ -64,6 +64,7 @@ Preferred communication style: Simple, everyday language.
 - Split-screen interface for simultaneous chat and task preview
 - Editable task table with comprehensive field management
 - Time-blocking interface with visual scheduling components
+- Live date and time widget in Daily Worksheet showing current date and time with second-by-second updates
 - Responsive design supporting both desktop and mobile workflows
 
 **Task Management System**
