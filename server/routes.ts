@@ -1697,7 +1697,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reason: string;
       }> = [];
 
-      // Helper function to calculate next occurrence date
+      // Helper function to calculate next occurrence date (includes TODAY if it matches)
       const getNextOccurrenceDate = (baseline: Date, targetDayName: string): Date => {
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         const baselineDay = baseline.getDay(); // 0=Sunday, 1=Monday, etc.
@@ -1707,16 +1707,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(`Invalid day name: ${targetDayName}`);
         }
         
-        // Calculate days until next occurrence (always future, never same day)
+        // Calculate days until next occurrence (include TODAY if it matches)
         let daysUntil = targetDay - baselineDay;
-        if (daysUntil <= 0) {
+        if (daysUntil < 0) {
           daysUntil += 7; // Next week
         }
+        // If daysUntil === 0, it's today - include it!
         
         const nextDate = new Date(baseline);
         nextDate.setDate(baseline.getDate() + daysUntil);
         nextDate.setHours(0, 0, 0, 0); // Start of day
         return nextDate;
+      };
+
+      // Helper function to check if a time block has already passed
+      const hasTimeBlockPassed = (date: Date, timeBlockName: string): boolean => {
+        const now = new Date();
+        
+        // Only check if it's today
+        if (date.toISOString().slice(0, 10) !== now.toISOString().slice(0, 10)) {
+          return false; // Future dates haven't passed
+        }
+        
+        // Find the time block details
+        const block = TIME_BLOCKS.find(b => 
+          b.name.toUpperCase() === timeBlockName.toUpperCase() ||
+          b.name.toUpperCase().includes(timeBlockName.toUpperCase()) ||
+          timeBlockName.toUpperCase().includes(b.name.toUpperCase())
+        );
+        
+        if (!block) {
+          return false; // Unknown block, don't skip
+        }
+        
+        // Parse the end time (format: "HH:MM")
+        const [endHour, endMinute] = block.end.split(':').map(Number);
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        
+        // Block has passed if current time is after the block's end time
+        if (currentHour > endHour) {
+          return true;
+        }
+        if (currentHour === endHour && currentMinute >= endMinute) {
+          return true;
+        }
+        
+        return false;
       };
 
       // Helper function to find valid time block
@@ -1767,6 +1804,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           try {
             const targetDate = getNextOccurrenceDate(baseline, dayName);
             const dateStr = targetDate.toISOString().slice(0, 10);
+
+            // Skip if this time block has already passed today
+            if (hasTimeBlockPassed(targetDate, timeBlock.name)) {
+              console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - time block ${timeBlock.name} has already passed on ${dateStr}`);
+              skipped++;
+              continue;
+            }
 
             // Check for existing Task with same name and date
             const existingTasks = await storage.getTasks(req.user.id);
