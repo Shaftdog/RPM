@@ -2529,7 +2529,10 @@ export default function DailyWorksheet() {
           <AlertDialogHeader>
             <AlertDialogTitle>Clear entire schedule?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove all tasks from your schedule for {new Date(selectedDate).toLocaleDateString()}. 
+              This will remove all tasks from your schedule for {(() => {
+                const [year, month, day] = selectedDate.split('-');
+                return new Date(parseInt(year), parseInt(month) - 1, parseInt(day)).toLocaleDateString();
+              })()}. 
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
