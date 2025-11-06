@@ -1805,6 +1805,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const targetDate = getNextOccurrenceDate(baseline, dayName);
             const dateStr = targetDate.toISOString().slice(0, 10);
 
+            // Skip if the entire date is in the past
+            const now = new Date();
+            const todayStr = now.toISOString().slice(0, 10);
+            if (dateStr < todayStr) {
+              console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - date ${dateStr} is in the past (today is ${todayStr})`);
+              skipped++;
+              continue;
+            }
+
             // Skip if this time block has already passed today
             if (hasTimeBlockPassed(targetDate, timeBlock.name)) {
               console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - time block ${timeBlock.name} has already passed on ${dateStr}`);
