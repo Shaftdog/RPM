@@ -1673,8 +1673,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Sync Recurring Tasks to Daily Schedule (Rebuild Mode)
   app.post('/api/recurring/sync-to-daily', isAuthenticated, async (req: any, res) => {
     try {
+      // Get current date in NY timezone for default
+      const nyTimeStr = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+      const nyDate = new Date(nyTimeStr);
+      const nyDateStr = nyDate.toISOString().slice(0, 10);
+      
       const syncSchema = z.object({
-        targetDate: z.string().optional().default(new Date().toISOString().slice(0, 10)),
+        targetDate: z.string().optional().default(nyDateStr),
         dryRun: z.boolean().optional().default(false)
       });
 
@@ -1696,6 +1701,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         requestedQuartile: number;
         reason: string;
       }> = [];
+
+      // Helper function to get current time in New York timezone
+      const getNYTime = (): Date => {
+        const timeStr = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+        return new Date(timeStr);
+      };
 
       // Helper function to calculate next occurrence date (includes TODAY if it matches)
       const getNextOccurrenceDate = (baseline: Date, targetDayName: string): Date => {
@@ -1720,12 +1731,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return nextDate;
       };
 
-      // Helper function to check if a time block has already passed
+      // Helper function to check if a time block has already passed (using NY timezone)
       const hasTimeBlockPassed = (date: Date, timeBlockName: string): boolean => {
-        const now = new Date();
+        const now = getNYTime();
         
-        // Only check if it's today
-        if (date.toISOString().slice(0, 10) !== now.toISOString().slice(0, 10)) {
+        // Only check if it's today (compare dates in NY timezone)
+        const dateStr = date.toISOString().slice(0, 10);
+        const nowStr = now.toISOString().slice(0, 10);
+        
+        if (dateStr !== nowStr) {
           return false; // Future dates haven't passed
         }
         
@@ -1805,11 +1819,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const targetDate = getNextOccurrenceDate(baseline, dayName);
             const dateStr = targetDate.toISOString().slice(0, 10);
 
-            // Skip if the entire date is in the past
-            const now = new Date();
+            // Skip if the entire date is in the past (using NY timezone)
+            const now = getNYTime();
             const todayStr = now.toISOString().slice(0, 10);
             if (dateStr < todayStr) {
-              console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - date ${dateStr} is in the past (today is ${todayStr})`);
+              console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - date ${dateStr} is in the past (today is ${todayStr} in NY)`);
               skipped++;
               continue;
             }
