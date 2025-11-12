@@ -375,11 +375,15 @@ export default function DailyWorksheet() {
   
   const { toast } = useToast();
 
-  // Update current date/time every second
+  // Update current date/time every second (using NY timezone)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentDateTime(new Date());
-    }, 1000);
+    const updateNYTime = () => {
+      const nyTimeStr = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+      setCurrentDateTime(new Date(nyTimeStr));
+    };
+    
+    updateNYTime(); // Set initial value
+    const interval = setInterval(updateNYTime, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1775,6 +1779,7 @@ export default function DailyWorksheet() {
                       second: '2-digit',
                       hour12: true 
                     })}
+                    <span className="text-xs text-muted-foreground ml-1 font-normal">NY</span>
                   </span>
                 </div>
               </div>

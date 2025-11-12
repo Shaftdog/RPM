@@ -64,8 +64,15 @@ Preferred communication style: Simple, everyday language.
 - Split-screen interface for simultaneous chat and task preview
 - Editable task table with comprehensive field management
 - Time-blocking interface with visual scheduling components
-- Live date and time widget in Daily Worksheet showing current date and time with second-by-second updates
+- Live date and time widget in Daily Worksheet showing current date and time in America/New_York timezone with second-by-second updates (displays "NY" label for clarity)
 - Responsive design supporting both desktop and mobile workflows
+
+**Timezone Handling**
+- System operates in America/New_York timezone consistently across all features
+- Daily Worksheet live clock displays New York time (not user's local time)
+- "Sync to Daily" button uses New York time for all date/time calculations
+- Time block scheduling logic uses New York time to determine which blocks have passed
+- This ensures synchronization between the displayed time and sync behavior
 
 **Task Management System**
 - Hierarchical task organization (Milestone > Sub-Milestone > Task > Subtask)
