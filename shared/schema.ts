@@ -187,11 +187,23 @@ export const dailySchedules = pgTable("daily_schedules", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Notes table
+export const notes = pgTable("notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default("Untitled"),
+  content: jsonb("content").$type<{ blocks: Array<{ type: string; content: string }> }>().default({ blocks: [] }),
+  tags: jsonb("tags").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   tasks: many(tasks),
   recurringTasks: many(recurringTasks),
   dailySchedules: many(dailySchedules),
+  notes: many(notes),
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -270,6 +282,13 @@ export const dailySchedulesRelations = relations(dailySchedules, ({ one }) => ({
     fields: [dailySchedules.actualTaskId],
     references: [tasks.id],
     relationName: "actualTasks",
+  }),
+}));
+
+export const notesRelations = relations(notes, ({ one }) => ({
+  user: one(users, {
+    fields: [notes.userId],
+    references: [users.id],
   }),
 }));
 
@@ -390,6 +409,21 @@ export const insertTaskHierarchySchema = createInsertSchema(taskHierarchy).omit(
   sequence: z.number().int().positive().optional().nullable(), // Allow setting sequence when creating hierarchy
 });
 
+export const insertNoteSchema = createInsertSchema(notes).omit({
+  id: true,
+  userId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  content: z.object({
+    blocks: z.array(z.object({
+      type: z.string(),
+      content: z.string(),
+    })),
+  }).optional(),
+  tags: z.array(z.string()).optional(),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -407,6 +441,8 @@ export type RecurringSchedule = typeof recurringSchedules.$inferSelect;
 export type InsertRecurringSchedule = z.infer<typeof insertRecurringScheduleSchema>;
 export type TaskSkip = typeof taskSkips.$inferSelect;
 export type InsertTaskSkip = z.infer<typeof insertTaskSkipSchema>;
+export type Note = typeof notes.$inferSelect;
+export type InsertNote = z.infer<typeof insertNoteSchema>;
 
 // Daily Schedule Response Schema (canonical format for OpenAI + local fallback)
 export const dailyScheduleTaskSchema = z.object({

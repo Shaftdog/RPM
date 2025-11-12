@@ -18,6 +18,7 @@ function Router() {
       <ProtectedRoute path="/daily" component={HomePage} />
       <ProtectedRoute path="/recurring" component={HomePage} />
       <ProtectedRoute path="/analytics" component={HomePage} />
+      <ProtectedRoute path="/notes" component={HomePage} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>

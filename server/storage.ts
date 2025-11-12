@@ -7,6 +7,7 @@ import {
   dailySchedules,
   taskDependencies,
   taskHierarchy,
+  notes,
   type User,
   type InsertUser,
   type Task,
@@ -23,6 +24,8 @@ import {
   type InsertTaskDependency,
   type TaskHierarchy,
   type InsertTaskHierarchy,
+  type Note,
+  type InsertNote,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, asc, gte, lte, sql, inArray } from "drizzle-orm";
@@ -117,6 +120,13 @@ export interface IStorage {
   getTaskAncestors(taskId: string, userId: string): Promise<Task[]>;
   getTaskDescendants(taskId: string, userId: string): Promise<Task[]>;
   getTaskSiblings(taskId: string, userId: string): Promise<Task[]>;
+
+  // Note operations
+  getNotes(userId: string, searchQuery?: string): Promise<Note[]>;
+  getNote(id: string, userId: string): Promise<Note | undefined>;
+  createNote(note: InsertNote & { userId: string }): Promise<Note>;
+  updateNote(id: string, userId: string, updates: Partial<InsertNote>): Promise<Note>;
+  deleteNote(id: string, userId: string): Promise<void>;
 
   // Session store
   sessionStore: session.Store;
@@ -1055,6 +1065,47 @@ export class DatabaseStorage implements IStorage {
       .filter(siblingId => siblingId !== taskId)
       .map(siblingId => tree.tasks.get(siblingId))
       .filter(Boolean) as Task[];
+  }
+
+  async getNotes(userId: string, searchQuery?: string): Promise<Note[]> {
+    const conditions = [eq(notes.userId, userId)];
+    
+    if (searchQuery) {
+      conditions.push(
+        or(
+          sql`${notes.title} ILIKE ${`%${searchQuery}%`}`,
+          sql`${notes.content}::text ILIKE ${`%${searchQuery}%`}`
+        ) as any
+      );
+    }
+    
+    return db.select().from(notes).where(and(...conditions)).orderBy(desc(notes.updatedAt));
+  }
+
+  async getNote(id: string, userId: string): Promise<Note | undefined> {
+    const [note] = await db.select().from(notes).where(and(eq(notes.id, id), eq(notes.userId, userId)));
+    return note;
+  }
+
+  async createNote(note: InsertNote & { userId: string }): Promise<Note> {
+    const [newNote] = await db
+      .insert(notes)
+      .values(note)
+      .returning();
+    return newNote;
+  }
+
+  async updateNote(id: string, userId: string, updates: Partial<InsertNote>): Promise<Note> {
+    const [updatedNote] = await db
+      .update(notes)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(notes.id, id), eq(notes.userId, userId)))
+      .returning();
+    return updatedNote;
+  }
+
+  async deleteNote(id: string, userId: string): Promise<void> {
+    await db.delete(notes).where(and(eq(notes.id, id), eq(notes.userId, userId)));
   }
 }
 

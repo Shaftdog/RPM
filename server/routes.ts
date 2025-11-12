@@ -12,6 +12,7 @@ import {
   insertDailyScheduleSchema,
   updateDailyScheduleSchema,
   insertTaskHierarchySchema,
+  insertNoteSchema,
   BACKLOG_TIME_BLOCK,
   TIME_BLOCKS 
 } from "@shared/schema";
@@ -2253,6 +2254,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
     });
+  });
+
+  // Notes Routes
+  app.get('/api/notes', isAuthenticated, async (req: any, res) => {
+    try {
+      const searchQuery = req.query.search as string | undefined;
+      const notes = await storage.getNotes(req.user.id, searchQuery);
+      res.json(notes);
+    } catch (error) {
+      console.error("Error fetching notes:", error);
+      res.status(500).json({ message: "Failed to fetch notes" });
+    }
+  });
+
+  app.get('/api/notes/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const note = await storage.getNote(req.params.id, req.user.id);
+      if (!note) {
+        return res.status(404).json({ message: "Note not found" });
+      }
+      res.json(note);
+    } catch (error) {
+      console.error("Error fetching note:", error);
+      res.status(500).json({ message: "Failed to fetch note" });
+    }
+  });
+
+  app.post('/api/notes', isAuthenticated, async (req: any, res) => {
+    try {
+      const noteData = insertNoteSchema.parse(req.body);
+      const note = await storage.createNote({ ...noteData, userId: req.user.id });
+      res.status(201).json(note);
+    } catch (error) {
+      console.error("Error creating note:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid note data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create note" });
+    }
+  });
+
+  app.patch('/api/notes/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const updates = insertNoteSchema.partial().parse(req.body);
+      const note = await storage.updateNote(req.params.id, req.user.id, updates);
+      res.json(note);
+    } catch (error) {
+      console.error("Error updating note:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid note data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update note" });
+    }
+  });
+
+  app.delete('/api/notes/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.deleteNote(req.params.id, req.user.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting note:", error);
+      res.status(500).json({ message: "Failed to delete note" });
+    }
   });
 
   // Debug endpoint to test recurring tasks data
