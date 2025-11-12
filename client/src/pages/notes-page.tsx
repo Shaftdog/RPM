@@ -79,9 +79,14 @@ export default function NotesPage() {
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/notes/${id}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-      setSelectedNoteId(null);
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      const updatedNotes = queryClient.getQueryData<Note[]>(["/api/notes", searchQuery]);
+      if (updatedNotes && updatedNotes.length > 0) {
+        setSelectedNoteId(updatedNotes[0].id);
+      } else {
+        setSelectedNoteId(null);
+      }
       toast({ title: "Note deleted" });
     },
   });
