@@ -1837,9 +1837,14 @@ export default function DailyWorksheet() {
               </Button>
               <Button 
                 variant="destructive"
-                onClick={() => setShowClearConfirm(true)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.log('[CLEAR SCHEDULE] Button clicked!', { showClearConfirm, isPending: clearScheduleMutation.isPending });
+                  setShowClearConfirm(true);
+                }}
                 disabled={clearScheduleMutation.isPending}
                 data-testid="button-clear-schedule"
+                type="button"
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Clear Schedule
@@ -2530,7 +2535,7 @@ export default function DailyWorksheet() {
 
       {/* Clear Schedule Confirmation Dialog */}
       <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent data-testid="dialog-clear-schedule">
           <AlertDialogHeader>
             <AlertDialogTitle>Clear entire schedule?</AlertDialogTitle>
             <AlertDialogDescription>
