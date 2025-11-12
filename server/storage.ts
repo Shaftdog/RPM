@@ -379,20 +379,28 @@ export class DatabaseStorage implements IStorage {
 
   // Daily schedule operations
   async getDailySchedule(userId: string, date: Date): Promise<DailySchedule[]> {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
+    // Extract date string (YYYY-MM-DD) to avoid timezone issues
+    const targetDateStr = date.toISOString().slice(0, 10);
     
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    return db.select()
+    // Query all schedules for this user and filter by date string match
+    const allSchedules = await db.select()
       .from(dailySchedules)
-      .where(and(
-        eq(dailySchedules.userId, userId),
-        gte(dailySchedules.date, startOfDay),
-        lte(dailySchedules.date, endOfDay)
-      ))
-      .orderBy(asc(dailySchedules.timeBlock), asc(dailySchedules.quartile));
+      .where(eq(dailySchedules.userId, userId));
+    
+    // Filter to only entries matching the target date (compare date portions only)
+    const filtered = allSchedules.filter(schedule => {
+      const scheduleDate = new Date(schedule.date);
+      const scheduleDateStr = scheduleDate.toISOString().slice(0, 10);
+      return scheduleDateStr === targetDateStr;
+    });
+    
+    // Sort by time block and quartile
+    return filtered.sort((a, b) => {
+      if (a.timeBlock !== b.timeBlock) {
+        return a.timeBlock.localeCompare(b.timeBlock);
+      }
+      return a.quartile - b.quartile;
+    });
   }
 
   async getDailyScheduleEntry(id: string, userId: string): Promise<DailySchedule | undefined> {
