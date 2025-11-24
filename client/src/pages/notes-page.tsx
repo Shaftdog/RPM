@@ -38,6 +38,8 @@ export default function NotesPage() {
   const [currentTitle, setCurrentTitle] = useState("");
   const [currentContent, setCurrentContent] = useState<NoteContent>({ blocks: [] });
   const editorRef = useRef<HTMLDivElement>(null);
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastLoadedNoteId = useRef<string | null>(null);
   const { toast } = useToast();
 
   const { data: notes = [], isLoading } = useQuery<Note[]>({
@@ -58,6 +60,27 @@ export default function NotesPage() {
       });
       return await response.json() as Note;
     },
+    onMutate: async () => {
+      if (saveTimerRef.current && lastLoadedNoteId.current && editorRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+        
+        const blocks = htmlToBlocks(editorRef.current.innerHTML);
+        const noteIdToSave = lastLoadedNoteId.current;
+        const titleToSave = currentTitle || "Untitled";
+        
+        const response = await apiRequest("PATCH", `/api/notes/${noteIdToSave}`, {
+          title: titleToSave,
+          content: { blocks },
+        });
+        const savedNote = await response.json() as Note;
+        
+        queryClient.setQueryData<Note[]>(["/api/notes", searchQuery], (oldNotes) => {
+          if (!oldNotes) return [savedNote];
+          return oldNotes.map((note) => (note.id === savedNote.id ? savedNote : note));
+        });
+      }
+    },
     onSuccess: (newNote) => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
       setSelectedNoteId(newNote.id);
@@ -70,8 +93,11 @@ export default function NotesPage() {
       const response = await apiRequest("PATCH", `/api/notes/${id}`, updates);
       return await response.json() as Note;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+    onSuccess: (updatedNote) => {
+      queryClient.setQueryData<Note[]>(["/api/notes", searchQuery], (oldNotes) => {
+        if (!oldNotes) return [updatedNote];
+        return oldNotes.map((note) => (note.id === updatedNote.id ? updatedNote : note));
+      });
     },
   });
 
@@ -93,8 +119,27 @@ export default function NotesPage() {
 
   const selectedNote = notes.find((note) => note.id === selectedNoteId);
 
+  const flushPendingSave = () => {
+    if (saveTimerRef.current && lastLoadedNoteId.current && editorRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      
+      const blocks = htmlToBlocks(editorRef.current.innerHTML);
+      updateNoteMutation.mutate({
+        id: lastLoadedNoteId.current,
+        updates: {
+          title: currentTitle || "Untitled",
+          content: { blocks },
+        },
+      });
+    }
+  };
+
   useEffect(() => {
-    if (selectedNote) {
+    if (selectedNote && selectedNoteId !== lastLoadedNoteId.current) {
+      flushPendingSave();
+      
+      lastLoadedNoteId.current = selectedNoteId;
       setCurrentTitle(selectedNote.title);
       const content = selectedNote.content as NoteContent;
       setCurrentContent(content || { blocks: [] });
@@ -103,7 +148,7 @@ export default function NotesPage() {
         editorRef.current.innerHTML = blocksToHtml(content.blocks);
       }
     }
-  }, [selectedNote]);
+  }, [selectedNoteId, selectedNote]);
 
   useEffect(() => {
     if (!selectedNoteId && notes.length > 0) {
@@ -125,14 +170,19 @@ export default function NotesPage() {
     });
   };
 
+  const debouncedSave = () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      saveNote();
+      saveTimerRef.current = null;
+    }, 1500);
+  };
+
   const handleTitleChange = (newTitle: string) => {
     setCurrentTitle(newTitle);
-    if (selectedNoteId) {
-      updateNoteMutation.mutate({
-        id: selectedNoteId,
-        updates: { title: newTitle },
-      });
-    }
+    debouncedSave();
   };
 
   const applyFormat = (command: string, value?: string) => {
@@ -145,13 +195,10 @@ export default function NotesPage() {
   };
 
   const handleEditorInput = () => {
-    if (selectedNoteId) {
-      const saveTimer = setTimeout(saveNote, 1000);
-      return () => clearTimeout(saveTimer);
-    }
+    debouncedSave();
   };
 
-  const blocksToHtml = (blocks: NoteBlock[]): string => {
+  function blocksToHtml(blocks: NoteBlock[]): string {
     return blocks
       .map((block) => {
         switch (block.type) {
@@ -170,15 +217,20 @@ export default function NotesPage() {
         }
       })
       .join("");
-  };
+  }
 
-  const htmlToBlocks = (html: string): NoteBlock[] => {
+  function htmlToBlocks(html: string): NoteBlock[] {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, "text/html");
     const blocks: NoteBlock[] = [];
 
     doc.body.childNodes.forEach((node) => {
-      if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent?.trim();
+        if (text) {
+          blocks.push({ type: "paragraph", content: text });
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
         const element = node as HTMLElement;
         const tagName = element.tagName.toLowerCase();
         
@@ -192,6 +244,11 @@ export default function NotesPage() {
           element.querySelectorAll("li").forEach((li) => {
             blocks.push({ type: "ol", content: li.textContent || "" });
           });
+        } else if (tagName === "div" || tagName === "br") {
+          const text = element.textContent?.trim();
+          if (text) {
+            blocks.push({ type: "paragraph", content: text });
+          }
         } else {
           blocks.push({ type: "paragraph", content: element.textContent || "" });
         }
@@ -199,7 +256,7 @@ export default function NotesPage() {
     });
 
     return blocks.length > 0 ? blocks : [{ type: "paragraph", content: "" }];
-  };
+  }
 
   return (
     <div className="flex h-[calc(100vh-4rem)] bg-background">
