@@ -19,6 +19,8 @@ import {
   Heading3,
   Menu,
   X,
+  Indent3,
+  Outdent3,
 } from "lucide-react";
 import type { Note } from "@shared/schema";
 
@@ -434,13 +436,30 @@ export default function NotesPage() {
               >
                 <ListOrdered className="h-4 w-4" />
               </Button>
+              <div className="w-px h-6 bg-border" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => applyFormat("indent")}
+                data-testid="button-format-indent"
+              >
+                <Indent3 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => applyFormat("outdent")}
+                data-testid="button-format-outdent"
+              >
+                <Outdent3 className="h-4 w-4" />
+              </Button>
             </div>
 
             <ScrollArea className="flex-1">
               <div
                 ref={editorRef}
                 contentEditable
-                className="p-6 outline-none prose prose-sm sm:prose lg:prose-lg max-w-none min-h-full"
+                className="p-6 outline-none prose prose-sm sm:prose lg:prose-lg max-w-none min-h-full !leading-tight"
                 onInput={handleEditorInput}
                 onBlur={saveNote}
                 data-testid="editor-content"
