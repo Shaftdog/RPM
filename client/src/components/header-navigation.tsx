@@ -137,65 +137,29 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
   return (
     <header className="bg-card border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex items-center space-x-8">
-            <div className="flex-shrink-0">
-              <h1 className="text-xl font-bold text-foreground">ProductivityAI</h1>
-            </div>
-            <nav className="flex space-x-4">
-              <Button
-                variant={activeTab === "capture" ? "default" : "secondary"}
-                onClick={() => onTabChange("capture")}
-                data-testid="tab-capture"
-              >
-                Capture
-              </Button>
-              <Button
-                variant={activeTab === "planning" ? "default" : "secondary"}
-                onClick={() => onTabChange("planning")}
-                data-testid="tab-planning"
-              >
-                Planning
-              </Button>
-              <Button
-                variant={activeTab === "daily" ? "default" : "secondary"}
-                onClick={() => onTabChange("daily")}
-                data-testid="tab-daily"
-              >
-                Daily
-              </Button>
-              <Button
-                variant={activeTab === "recurring" ? "default" : "secondary"}
-                onClick={() => onTabChange("recurring")}
-                data-testid="tab-recurring"
-              >
-                Recurring
-              </Button>
-              <Button
-                variant={activeTab === "analytics" ? "default" : "secondary"}
-                onClick={() => onTabChange("analytics")}
-                data-testid="tab-analytics"
-              >
-                Analytics
-              </Button>
-              <Button
-                variant={activeTab === "notes" ? "default" : "secondary"}
-                onClick={() => onTabChange("notes")}
-                data-testid="tab-notes"
-              >
-                Notes
-              </Button>
-            </nav>
+        <div className="flex justify-between items-center py-3">
+          <div className="flex-shrink-0">
+            <h1 className="text-xl font-bold text-foreground">ProductivityAI</h1>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             <Button 
               variant="outline" 
               size="sm" 
               onClick={handleQuickAdd}
               data-testid="button-quick-add"
+              className="hidden sm:flex"
             >
               <Plus className="h-4 w-4 mr-2" />
               Quick Add Task
+            </Button>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={handleQuickAdd}
+              data-testid="button-quick-add-mobile"
+              className="sm:hidden"
+            >
+              <Plus className="h-4 w-4" />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -217,6 +181,56 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
             </DropdownMenu>
           </div>
         </div>
+        <nav className="flex flex-wrap gap-2 pb-3">
+          <Button
+            variant={activeTab === "capture" ? "default" : "secondary"}
+            onClick={() => onTabChange("capture")}
+            data-testid="tab-capture"
+            size="sm"
+          >
+            Capture
+          </Button>
+          <Button
+            variant={activeTab === "planning" ? "default" : "secondary"}
+            onClick={() => onTabChange("planning")}
+            data-testid="tab-planning"
+            size="sm"
+          >
+            Planning
+          </Button>
+          <Button
+            variant={activeTab === "daily" ? "default" : "secondary"}
+            onClick={() => onTabChange("daily")}
+            data-testid="tab-daily"
+            size="sm"
+          >
+            Daily
+          </Button>
+          <Button
+            variant={activeTab === "recurring" ? "default" : "secondary"}
+            onClick={() => onTabChange("recurring")}
+            data-testid="tab-recurring"
+            size="sm"
+          >
+            Recurring
+          </Button>
+          <Button
+            variant={activeTab === "analytics" ? "default" : "secondary"}
+            onClick={() => onTabChange("analytics")}
+            data-testid="tab-analytics"
+            size="sm"
+          >
+            Analytics
+          </Button>
+          <Button
+            variant={activeTab === "notes" ? "default" : "secondary"}
+            onClick={() => onTabChange("notes")}
+            data-testid="tab-notes"
+            size="sm"
+          >
+            Notes
+          </Button>
+        </nav>
       </div>
 
       <Dialog open={isQuickAddOpen} onOpenChange={setIsQuickAddOpen}>
