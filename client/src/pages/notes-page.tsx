@@ -133,9 +133,10 @@ export default function NotesPage() {
       return await response.json();
     },
     onSuccess: (result) => {
+      const count = result.tasksCreated || 0;
       toast({ 
         title: "Tasks created", 
-        description: `Created ${result.data?.tasksCreated || 0} tasks. View them in the Planning tab under Backlog.`
+        description: `Created ${count} task${count !== 1 ? 's' : ''}. View them in the Planning tab under Backlog.`
       });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
     },
@@ -387,8 +388,23 @@ export default function NotesPage() {
     if (tasksToCreate.length > 0) {
       createTasksMutation.mutate(tasksToCreate, {
         onSuccess: () => {
-          setBlocks(prev => prev.map(block => ({ ...block, isFlagged: false })));
-          debouncedSave();
+          const clearedBlocks = blocks.map(block => ({ ...block, isFlagged: false }));
+          setBlocks(clearedBlocks);
+          
+          if (saveTimerRef.current) {
+            clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = null;
+          }
+          
+          if (selectedNoteId) {
+            updateNoteMutation.mutate({
+              id: selectedNoteId,
+              updates: {
+                title: currentTitle || "Untitled",
+                content: { blocks: clearedBlocks },
+              },
+            });
+          }
         }
       });
     }

@@ -89,3 +89,18 @@ Preferred communication style: Simple, everyday language.
 - Recurring task integration with daily schedules
 - AI schedule generation that preserves recurring tasks: when generating an AI schedule, existing recurring tasks (marked with RECURRING_TASK: prefix in reflection field) are identified and preserved, with AI only filling unoccupied time slots
 - Clear Schedule feature: allows users to remove all tasks from the daily schedule with a confirmation dialog to prevent accidental deletions
+
+**Notes System with Task Tagging**
+- Block-based Notion-style note editor with rich text support
+- Each block supports: paragraphs, headings (H1-H3), bullet lists, numbered lists
+- Indentation via Tab/Shift+Tab for hierarchical content organization
+- Collapsible blocks: click chevron to collapse/expand child content
+- Task tagging system:
+  - Hover over any block to reveal flag icon
+  - Click flag to tag a line for task conversion (amber highlight)
+  - Click "Process Tags" button to convert all flagged lines to tasks
+  - Top-level flagged items become Tasks, indented children become Subtasks
+  - Tasks are created in Personal/Mental category with BACKLOG time horizon
+  - After processing, flags are cleared and tasks appear in Planning tab
+- Mobile-responsive with collapsible sidebar
+- Auto-save with debounce (1.5 second delay)
