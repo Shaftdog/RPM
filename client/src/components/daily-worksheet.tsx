@@ -1748,9 +1748,9 @@ export default function DailyWorksheet() {
 
       {/* Top Controls - Sticky Positioned */}
       <Card className="sticky top-0 z-50 bg-background border-b shadow-sm">
-        <CardContent className="p-6">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-6">
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-wrap gap-3 sm:gap-4 items-center justify-between">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-6">
               <div className="flex items-center space-x-2">
                 <Calendar className="h-4 w-4" />
                 <Input
@@ -1761,7 +1761,7 @@ export default function DailyWorksheet() {
                   data-testid="input-date-selector"
                 />
               </div>
-              <div className="flex items-center space-x-2 px-4 py-2 bg-muted/50 rounded-md border" data-testid="widget-current-datetime">
+              <div className="flex items-center space-x-2 px-3 sm:px-4 py-2 bg-muted/50 rounded-md border" data-testid="widget-current-datetime">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <div className="flex flex-col">
                   <span className="text-xs font-medium leading-none">
@@ -1783,60 +1783,65 @@ export default function DailyWorksheet() {
                   </span>
                 </div>
               </div>
-              <div className="text-sm">
-                <span className="text-muted-foreground">Total Work:</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">Work:</span>
                 <span className="font-mono font-medium ml-1" data-testid="text-total-work-time">{formatTime(totalWorkTime)}</span>
               </div>
-              <div className="text-sm">
-                <span className="text-muted-foreground">Current Work:</span>
+              <div>
+                <span className="text-muted-foreground">Now:</span>
                 <span className="font-mono font-medium ml-1" data-testid="text-current-work-time">{formatTime(workTime)}</span>
               </div>
-              <div className="text-sm">
-                <span className="text-muted-foreground">Total Break:</span>
+              <div>
+                <span className="text-muted-foreground">Break:</span>
                 <span className="font-mono font-medium ml-1" data-testid="text-total-break-time">{formatTime(totalBreakTime)}</span>
               </div>
-              <div className="text-sm">
-                <span className="text-muted-foreground">Current Break:</span>
+              <div>
+                <span className="text-muted-foreground">Now:</span>
                 <span className="font-mono font-medium ml-1" data-testid="text-current-break-time">{formatTime(breakTime)}</span>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <Button onClick={handleWorkTimerToggle} data-testid="button-work-timer-toggle" variant={workTimerRunning ? "default" : "outline"}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={handleWorkTimerToggle} data-testid="button-work-timer-toggle" variant={workTimerRunning ? "default" : "outline"} size="sm">
                 {workTimerRunning ? (
                   <>
-                    <Pause className="mr-2 h-4 w-4" />
-                    Pause Work
+                    <Pause className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Pause Work</span>
                   </>
                 ) : (
                   <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Start Work
+                    <Play className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Start Work</span>
                   </>
                 )}
               </Button>
-              <Button onClick={handleBreakTimerToggle} data-testid="button-break-timer-toggle" variant={breakTimerRunning ? "default" : "outline"}>
+              <Button onClick={handleBreakTimerToggle} data-testid="button-break-timer-toggle" variant={breakTimerRunning ? "default" : "outline"} size="sm">
                 {breakTimerRunning ? (
                   <>
-                    <Pause className="mr-2 h-4 w-4" />
-                    End Break
+                    <Pause className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">End Break</span>
                   </>
                 ) : (
                   <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Start Break
+                    <Play className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Start Break</span>
                   </>
                 )}
               </Button>
               <Button 
                 variant="outline"
+                size="sm"
                 onClick={() => generateScheduleMutation.mutate(selectedDate)}
                 disabled={generateScheduleMutation.isPending}
                 data-testid="button-generate-schedule"
               >
-                Generate AI Schedule
+                <span className="hidden sm:inline">Generate AI Schedule</span>
+                <span className="sm:hidden">AI Schedule</span>
               </Button>
               <Button 
                 variant="destructive"
+                size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   console.log('[CLEAR SCHEDULE] Button clicked!', { showClearConfirm, isPending: clearScheduleMutation.isPending });
@@ -1846,8 +1851,8 @@ export default function DailyWorksheet() {
                 data-testid="button-clear-schedule"
                 type="button"
               >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Clear Schedule
+                <Trash2 className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Clear Schedule</span>
               </Button>
             </div>
           </div>
