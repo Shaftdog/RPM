@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -19,18 +19,30 @@ import {
   Heading3,
   Menu,
   X,
-  Indent3,
-  Outdent3,
+  Indent,
+  Outdent,
+  Flag,
+  ListTodo,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import type { Note } from "@shared/schema";
 
 interface NoteBlock {
-  type: string;
+  id: string;
+  type: "paragraph" | "h1" | "h2" | "h3" | "ul" | "ol";
   content: string;
+  indentLevel: number;
+  isFlagged: boolean;
+  isCollapsed: boolean;
 }
 
 interface NoteContent {
   blocks: NoteBlock[];
+}
+
+function generateBlockId(): string {
+  return Math.random().toString(36).substring(2, 11);
 }
 
 export default function NotesPage() {
@@ -38,10 +50,10 @@ export default function NotesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [currentTitle, setCurrentTitle] = useState("");
-  const [currentContent, setCurrentContent] = useState<NoteContent>({ blocks: [] });
-  const editorRef = useRef<HTMLDivElement>(null);
+  const [blocks, setBlocks] = useState<NoteBlock[]>([{ id: generateBlockId(), type: "paragraph", content: "", indentLevel: 0, isFlagged: false, isCollapsed: false }]);
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastLoadedNoteId = useRef<string | null>(null);
+  const blockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const { toast } = useToast();
 
   const { data: notes = [], isLoading } = useQuery<Note[]>({
@@ -57,22 +69,18 @@ export default function NotesPage() {
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/notes", {
         title: "Untitled",
-        content: { blocks: [{ type: "paragraph", content: "" }] },
+        content: { blocks: [{ id: generateBlockId(), type: "paragraph", content: "", indentLevel: 0, isFlagged: false, isCollapsed: false }] },
         tags: [],
       });
       return await response.json() as Note;
     },
     onMutate: async () => {
-      if (saveTimerRef.current && lastLoadedNoteId.current && editorRef.current) {
+      if (saveTimerRef.current && lastLoadedNoteId.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
         
-        const blocks = htmlToBlocks(editorRef.current.innerHTML);
-        const noteIdToSave = lastLoadedNoteId.current;
-        const titleToSave = currentTitle || "Untitled";
-        
-        const response = await apiRequest("PATCH", `/api/notes/${noteIdToSave}`, {
-          title: titleToSave,
+        const response = await apiRequest("PATCH", `/api/notes/${lastLoadedNoteId.current}`, {
+          title: currentTitle || "Untitled",
           content: { blocks },
         });
         const savedNote = await response.json() as Note;
@@ -119,23 +127,34 @@ export default function NotesPage() {
     },
   });
 
+  const createTasksMutation = useMutation({
+    mutationFn: async (tasksData: any[]) => {
+      const response = await apiRequest("POST", "/api/tasks/bulk", { tasks: tasksData });
+      return await response.json();
+    },
+    onSuccess: (result) => {
+      toast({ 
+        title: "Tasks created", 
+        description: `Created ${result.data?.tasksCreated || 0} tasks. View them in the Planning tab under Backlog.`
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+    },
+  });
+
   const selectedNote = notes.find((note) => note.id === selectedNoteId);
 
-  const flushPendingSave = () => {
-    if (saveTimerRef.current && lastLoadedNoteId.current && editorRef.current) {
+  const flushPendingSave = useCallback(() => {
+    if (saveTimerRef.current && lastLoadedNoteId.current) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
       
-      const blocks = htmlToBlocks(editorRef.current.innerHTML);
       updateNoteMutation.mutate({
         id: lastLoadedNoteId.current,
-        updates: {
-          title: currentTitle || "Untitled",
-          content: { blocks },
-        },
-      });
+        content: { blocks },
+        title: currentTitle || "Untitled",
+      } as any);
     }
-  };
+  }, [blocks, currentTitle, updateNoteMutation]);
 
   useEffect(() => {
     if (selectedNote && selectedNoteId !== lastLoadedNoteId.current) {
@@ -143,14 +162,23 @@ export default function NotesPage() {
       
       lastLoadedNoteId.current = selectedNoteId;
       setCurrentTitle(selectedNote.title);
-      const content = selectedNote.content as NoteContent;
-      setCurrentContent(content || { blocks: [] });
       
-      if (editorRef.current && content?.blocks) {
-        editorRef.current.innerHTML = blocksToHtml(content.blocks);
+      const content = selectedNote.content as NoteContent;
+      if (content?.blocks && content.blocks.length > 0) {
+        const migratedBlocks = content.blocks.map((block: any) => ({
+          id: block.id || generateBlockId(),
+          type: block.type || "paragraph",
+          content: block.content || "",
+          indentLevel: block.indentLevel ?? 0,
+          isFlagged: block.isFlagged ?? false,
+          isCollapsed: block.isCollapsed ?? false,
+        }));
+        setBlocks(migratedBlocks);
+      } else {
+        setBlocks([{ id: generateBlockId(), type: "paragraph", content: "", indentLevel: 0, isFlagged: false, isCollapsed: false }]);
       }
     }
-  }, [selectedNoteId, selectedNote]);
+  }, [selectedNoteId, selectedNote, flushPendingSave]);
 
   useEffect(() => {
     if (!selectedNoteId && notes.length > 0) {
@@ -158,11 +186,9 @@ export default function NotesPage() {
     }
   }, [notes, selectedNoteId]);
 
-  const saveNote = () => {
-    if (!selectedNoteId || !editorRef.current) return;
+  const saveNote = useCallback(() => {
+    if (!selectedNoteId) return;
 
-    const blocks = htmlToBlocks(editorRef.current.innerHTML);
-    
     updateNoteMutation.mutate({
       id: selectedNoteId,
       updates: {
@@ -170,9 +196,9 @@ export default function NotesPage() {
         content: { blocks },
       },
     });
-  };
+  }, [selectedNoteId, currentTitle, blocks, updateNoteMutation]);
 
-  const debouncedSave = () => {
+  const debouncedSave = useCallback(() => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
@@ -180,85 +206,195 @@ export default function NotesPage() {
       saveNote();
       saveTimerRef.current = null;
     }, 1500);
-  };
+  }, [saveNote]);
 
   const handleTitleChange = (newTitle: string) => {
     setCurrentTitle(newTitle);
     debouncedSave();
   };
 
-  const applyFormat = (command: string, value?: string) => {
-    document.execCommand(command, false, value);
-    editorRef.current?.focus();
-  };
-
-  const insertHeading = (level: number) => {
-    applyFormat("formatBlock", `h${level}`);
-  };
-
-  const handleEditorInput = () => {
+  const updateBlock = (blockId: string, updates: Partial<NoteBlock>) => {
+    setBlocks(prev => prev.map(block => 
+      block.id === blockId ? { ...block, ...updates } : block
+    ));
     debouncedSave();
   };
 
-  function blocksToHtml(blocks: NoteBlock[]): string {
-    return blocks
-      .map((block) => {
-        switch (block.type) {
-          case "h1":
-            return `<h1>${block.content}</h1>`;
-          case "h2":
-            return `<h2>${block.content}</h2>`;
-          case "h3":
-            return `<h3>${block.content}</h3>`;
-          case "ul":
-            return `<ul><li>${block.content}</li></ul>`;
-          case "ol":
-            return `<ol><li>${block.content}</li></ol>`;
-          default:
-            return `<p>${block.content}</p>`;
-        }
-      })
-      .join("");
-  }
+  const handleBlockKeyDown = (e: React.KeyboardEvent, blockId: string, blockIndex: number) => {
+    const block = blocks[blockIndex];
+    
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      const newBlock: NoteBlock = {
+        id: generateBlockId(),
+        type: "paragraph",
+        content: "",
+        indentLevel: block.indentLevel,
+        isFlagged: false,
+        isCollapsed: false,
+      };
+      const newBlocks = [...blocks];
+      newBlocks.splice(blockIndex + 1, 0, newBlock);
+      setBlocks(newBlocks);
+      debouncedSave();
+      
+      setTimeout(() => {
+        const ref = blockRefs.current.get(newBlock.id);
+        ref?.focus();
+      }, 0);
+    }
+    
+    if (e.key === "Backspace" && block.content === "" && blocks.length > 1) {
+      e.preventDefault();
+      const newBlocks = blocks.filter(b => b.id !== blockId);
+      setBlocks(newBlocks);
+      debouncedSave();
+      
+      if (blockIndex > 0) {
+        setTimeout(() => {
+          const prevBlock = newBlocks[blockIndex - 1];
+          const ref = blockRefs.current.get(prevBlock.id);
+          ref?.focus();
+        }, 0);
+      }
+    }
+    
+    if (e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        updateBlock(blockId, { indentLevel: Math.max(0, block.indentLevel - 1) });
+      } else {
+        updateBlock(blockId, { indentLevel: Math.min(5, block.indentLevel + 1) });
+      }
+    }
+  };
 
-  function htmlToBlocks(html: string): NoteBlock[] {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, "text/html");
-    const blocks: NoteBlock[] = [];
+  const toggleFlag = (blockId: string) => {
+    setBlocks(prev => prev.map(block => 
+      block.id === blockId ? { ...block, isFlagged: !block.isFlagged } : block
+    ));
+    debouncedSave();
+  };
 
-    doc.body.childNodes.forEach((node) => {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const text = node.textContent?.trim();
-        if (text) {
-          blocks.push({ type: "paragraph", content: text });
-        }
-      } else if (node.nodeType === Node.ELEMENT_NODE) {
-        const element = node as HTMLElement;
-        const tagName = element.tagName.toLowerCase();
+  const toggleCollapse = (blockId: string) => {
+    setBlocks(prev => prev.map(block => 
+      block.id === blockId ? { ...block, isCollapsed: !block.isCollapsed } : block
+    ));
+    debouncedSave();
+  };
+
+  const hasChildren = (blockIndex: number): boolean => {
+    if (blockIndex >= blocks.length - 1) return false;
+    const currentIndent = blocks[blockIndex].indentLevel;
+    return blocks[blockIndex + 1]?.indentLevel > currentIndent;
+  };
+
+  const isHiddenByCollapse = (blockIndex: number): boolean => {
+    for (let i = blockIndex - 1; i >= 0; i--) {
+      const prevBlock = blocks[i];
+      if (prevBlock.indentLevel < blocks[blockIndex].indentLevel) {
+        if (prevBlock.isCollapsed) return true;
+        break;
+      }
+    }
+    return false;
+  };
+
+  const applyBlockFormat = (format: string) => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    
+    const range = selection.getRangeAt(0);
+    const blockElement = range.startContainer.parentElement?.closest('[data-block-id]');
+    if (!blockElement) return;
+    
+    const blockId = blockElement.getAttribute('data-block-id');
+    if (!blockId) return;
+    
+    if (format === "h1" || format === "h2" || format === "h3") {
+      updateBlock(blockId, { type: format });
+    } else if (format === "ul" || format === "ol") {
+      updateBlock(blockId, { type: format });
+    } else if (format === "paragraph") {
+      updateBlock(blockId, { type: "paragraph" });
+    } else if (format === "indent") {
+      const block = blocks.find(b => b.id === blockId);
+      if (block) {
+        updateBlock(blockId, { indentLevel: Math.min(5, block.indentLevel + 1) });
+      }
+    } else if (format === "outdent") {
+      const block = blocks.find(b => b.id === blockId);
+      if (block) {
+        updateBlock(blockId, { indentLevel: Math.max(0, block.indentLevel - 1) });
+      }
+    } else {
+      document.execCommand(format, false);
+    }
+  };
+
+  const processTags = () => {
+    const flaggedBlocks = blocks.filter(b => b.isFlagged);
+    if (flaggedBlocks.length === 0) {
+      toast({ title: "No tagged items", description: "Flag some lines first using the flag icon" });
+      return;
+    }
+
+    const tasksToCreate: any[] = [];
+    const processedIds = new Set<string>();
+
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      if (!block.isFlagged || processedIds.has(block.id)) continue;
+      if (block.content.trim() === "") continue;
+
+      processedIds.add(block.id);
+      
+      const taskName = block.content.trim();
+      const taskData: any = {
+        name: taskName,
+        type: "Task",
+        category: "Personal",
+        subcategory: "Mental",
+        timeHorizon: "BACKLOG",
+        priority: "Medium",
+        status: "not_started",
+      };
+
+      const subtasks: any[] = [];
+      for (let j = i + 1; j < blocks.length; j++) {
+        const childBlock = blocks[j];
+        if (childBlock.indentLevel <= block.indentLevel) break;
         
-        if (tagName === "h1" || tagName === "h2" || tagName === "h3") {
-          blocks.push({ type: tagName, content: element.textContent || "" });
-        } else if (tagName === "ul") {
-          element.querySelectorAll("li").forEach((li) => {
-            blocks.push({ type: "ul", content: li.textContent || "" });
+        if (childBlock.isFlagged && childBlock.content.trim() !== "") {
+          processedIds.add(childBlock.id);
+          subtasks.push({
+            name: childBlock.content.trim(),
+            type: "Subtask",
+            category: "Personal",
+            subcategory: "Mental",
+            timeHorizon: "BACKLOG",
+            priority: "Medium",
+            status: "not_started",
+            dependencies: [taskName],
           });
-        } else if (tagName === "ol") {
-          element.querySelectorAll("li").forEach((li) => {
-            blocks.push({ type: "ol", content: li.textContent || "" });
-          });
-        } else if (tagName === "div" || tagName === "br") {
-          const text = element.textContent?.trim();
-          if (text) {
-            blocks.push({ type: "paragraph", content: text });
-          }
-        } else {
-          blocks.push({ type: "paragraph", content: element.textContent || "" });
         }
       }
-    });
 
-    return blocks.length > 0 ? blocks : [{ type: "paragraph", content: "" }];
-  }
+      tasksToCreate.push(taskData);
+      tasksToCreate.push(...subtasks);
+    }
+
+    if (tasksToCreate.length > 0) {
+      createTasksMutation.mutate(tasksToCreate, {
+        onSuccess: () => {
+          setBlocks(prev => prev.map(block => ({ ...block, isFlagged: false })));
+          debouncedSave();
+        }
+      });
+    }
+  };
+
+  const flaggedCount = blocks.filter(b => b.isFlagged).length;
 
   return (
     <div className="flex h-[calc(100vh-4rem)] bg-background">
@@ -377,11 +513,11 @@ export default function NotesPage() {
               </Button>
             </div>
 
-            <div className="border-b p-2 flex flex-wrap gap-1 bg-card">
+            <div className="border-b p-2 flex flex-wrap gap-1 bg-card items-center">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => insertHeading(1)}
+                onClick={() => applyBlockFormat("h1")}
                 data-testid="button-format-h1"
               >
                 <Heading1 className="h-4 w-4" />
@@ -389,7 +525,7 @@ export default function NotesPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => insertHeading(2)}
+                onClick={() => applyBlockFormat("h2")}
                 data-testid="button-format-h2"
               >
                 <Heading2 className="h-4 w-4" />
@@ -397,7 +533,7 @@ export default function NotesPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => insertHeading(3)}
+                onClick={() => applyBlockFormat("h3")}
                 data-testid="button-format-h3"
               >
                 <Heading3 className="h-4 w-4" />
@@ -406,7 +542,7 @@ export default function NotesPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => applyFormat("bold")}
+                onClick={() => applyBlockFormat("bold")}
                 data-testid="button-format-bold"
               >
                 <Bold className="h-4 w-4" />
@@ -414,7 +550,7 @@ export default function NotesPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => applyFormat("italic")}
+                onClick={() => applyBlockFormat("italic")}
                 data-testid="button-format-italic"
               >
                 <Italic className="h-4 w-4" />
@@ -423,7 +559,7 @@ export default function NotesPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => applyFormat("insertUnorderedList")}
+                onClick={() => applyBlockFormat("ul")}
                 data-testid="button-format-ul"
               >
                 <List className="h-4 w-4" />
@@ -431,7 +567,7 @@ export default function NotesPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => applyFormat("insertOrderedList")}
+                onClick={() => applyBlockFormat("ol")}
                 data-testid="button-format-ol"
               >
                 <ListOrdered className="h-4 w-4" />
@@ -440,30 +576,112 @@ export default function NotesPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => applyFormat("indent")}
+                onClick={() => applyBlockFormat("indent")}
                 data-testid="button-format-indent"
               >
-                <Indent3 className="h-4 w-4" />
+                <Indent className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => applyFormat("outdent")}
+                onClick={() => applyBlockFormat("outdent")}
                 data-testid="button-format-outdent"
               >
-                <Outdent3 className="h-4 w-4" />
+                <Outdent className="h-4 w-4" />
+              </Button>
+              
+              <div className="w-px h-6 bg-border ml-auto" />
+              <Button
+                variant={flaggedCount > 0 ? "default" : "ghost"}
+                size="sm"
+                onClick={processTags}
+                disabled={createTasksMutation.isPending || flaggedCount === 0}
+                data-testid="button-process-tags"
+                className="gap-1"
+              >
+                <ListTodo className="h-4 w-4" />
+                Process Tags {flaggedCount > 0 && `(${flaggedCount})`}
               </Button>
             </div>
 
             <ScrollArea className="flex-1">
-              <div
-                ref={editorRef}
-                contentEditable
-                className="p-6 outline-none prose prose-sm sm:prose lg:prose-lg max-w-none min-h-full !leading-tight"
-                onInput={handleEditorInput}
-                onBlur={saveNote}
-                data-testid="editor-content"
-              />
+              <div className="p-6 space-y-1">
+                {blocks.map((block, index) => {
+                  if (isHiddenByCollapse(index)) return null;
+                  
+                  const showCollapseToggle = hasChildren(index);
+                  const paddingLeft = block.indentLevel * 24;
+                  
+                  const BlockTag = block.type === "h1" ? "h1" : 
+                                   block.type === "h2" ? "h2" : 
+                                   block.type === "h3" ? "h3" : "div";
+                  
+                  const blockClasses = `
+                    ${block.type === "h1" ? "text-2xl font-bold" : ""}
+                    ${block.type === "h2" ? "text-xl font-semibold" : ""}
+                    ${block.type === "h3" ? "text-lg font-medium" : ""}
+                    ${block.type === "ul" ? "list-disc list-inside" : ""}
+                    ${block.type === "ol" ? "list-decimal list-inside" : ""}
+                    ${block.isFlagged ? "bg-amber-100 dark:bg-amber-900/30 rounded px-1" : ""}
+                    outline-none min-h-[1.5em] !leading-tight
+                  `;
+                  
+                  return (
+                    <div 
+                      key={block.id}
+                      className="group flex items-start gap-1"
+                      style={{ paddingLeft }}
+                      data-testid={`block-container-${block.id}`}
+                    >
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5 shrink-0">
+                        {showCollapseToggle ? (
+                          <button
+                            onClick={() => toggleCollapse(block.id)}
+                            className="p-0.5 hover:bg-accent rounded"
+                            data-testid={`button-collapse-${block.id}`}
+                          >
+                            {block.isCollapsed ? (
+                              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                          </button>
+                        ) : (
+                          <div className="w-4.5" />
+                        )}
+                        
+                        <button
+                          onClick={() => toggleFlag(block.id)}
+                          className={`p-0.5 rounded ${block.isFlagged ? "bg-amber-200 dark:bg-amber-800" : "hover:bg-accent"}`}
+                          data-testid={`button-flag-${block.id}`}
+                        >
+                          <Flag className={`h-3.5 w-3.5 ${block.isFlagged ? "text-amber-600 dark:text-amber-400 fill-current" : "text-muted-foreground"}`} />
+                        </button>
+                      </div>
+                      
+                      <BlockTag
+                        ref={(el) => {
+                          if (el) blockRefs.current.set(block.id, el);
+                          else blockRefs.current.delete(block.id);
+                        }}
+                        contentEditable
+                        suppressContentEditableWarning
+                        data-block-id={block.id}
+                        className={blockClasses}
+                        style={{ flex: 1 }}
+                        onInput={(e) => {
+                          const target = e.target as HTMLElement;
+                          updateBlock(block.id, { content: target.textContent || "" });
+                        }}
+                        onKeyDown={(e) => handleBlockKeyDown(e, block.id, index)}
+                        onBlur={saveNote}
+                        data-testid={`editor-block-${block.id}`}
+                        dangerouslySetInnerHTML={{ __html: block.content }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </ScrollArea>
           </>
         ) : (
