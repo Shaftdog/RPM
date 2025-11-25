@@ -54,7 +54,11 @@ export default function NotesPage() {
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastLoadedNoteId = useRef<string | null>(null);
   const blockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const activeEditingBlockRef = useRef<string | null>(null);
+  const blocksRef = useRef<NoteBlock[]>([]);
   const { toast } = useToast();
+
+  blocksRef.current = blocks;
 
   const { data: notes = [], isLoading } = useQuery<Note[]>({
     queryKey: ["/api/notes", searchQuery],
@@ -190,14 +194,22 @@ export default function NotesPage() {
   const saveNote = useCallback(() => {
     if (!selectedNoteId) return;
 
+    const freshBlocks = blocksRef.current.map(block => {
+      const ref = blockRefs.current.get(block.id);
+      if (ref) {
+        return { ...block, content: ref.textContent || "" };
+      }
+      return block;
+    });
+
     updateNoteMutation.mutate({
       id: selectedNoteId,
       updates: {
         title: currentTitle || "Untitled",
-        content: { blocks },
+        content: { blocks: freshBlocks },
       },
     });
-  }, [selectedNoteId, currentTitle, blocks, updateNoteMutation]);
+  }, [selectedNoteId, currentTitle, updateNoteMutation]);
 
   const debouncedSave = useCallback(() => {
     if (saveTimerRef.current) {
@@ -223,6 +235,7 @@ export default function NotesPage() {
 
   const handleBlockKeyDown = (e: React.KeyboardEvent, blockId: string, blockIndex: number) => {
     const block = blocks[blockIndex];
+    const currentDomContent = blockRefs.current.get(blockId)?.textContent || "";
     
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -234,9 +247,14 @@ export default function NotesPage() {
         isFlagged: false,
         isCollapsed: false,
       };
-      const newBlocks = [...blocks];
-      newBlocks.splice(blockIndex + 1, 0, newBlock);
-      setBlocks(newBlocks);
+      setBlocks(prev => {
+        const updatedBlocks = prev.map(b => 
+          b.id === blockId ? { ...b, content: currentDomContent } : b
+        );
+        const newBlocks = [...updatedBlocks];
+        newBlocks.splice(blockIndex + 1, 0, newBlock);
+        return newBlocks;
+      });
       debouncedSave();
       
       setTimeout(() => {
@@ -245,7 +263,7 @@ export default function NotesPage() {
       }, 0);
     }
     
-    if (e.key === "Backspace" && block.content === "" && blocks.length > 1) {
+    if (e.key === "Backspace" && currentDomContent === "" && blocks.length > 1) {
       e.preventDefault();
       const newBlocks = blocks.filter(b => b.id !== blockId);
       setBlocks(newBlocks);
@@ -262,11 +280,17 @@ export default function NotesPage() {
     
     if (e.key === "Tab") {
       e.preventDefault();
-      if (e.shiftKey) {
-        updateBlock(blockId, { indentLevel: Math.max(0, block.indentLevel - 1) });
-      } else {
-        updateBlock(blockId, { indentLevel: Math.min(5, block.indentLevel + 1) });
-      }
+      const freshContent = currentDomContent;
+      setBlocks(prev => prev.map(b => 
+        b.id === blockId ? { 
+          ...b, 
+          content: freshContent,
+          indentLevel: e.shiftKey 
+            ? Math.max(0, b.indentLevel - 1) 
+            : Math.min(5, b.indentLevel + 1)
+        } : b
+      ));
+      debouncedSave();
     }
   };
 
@@ -679,7 +703,7 @@ export default function NotesPage() {
                         ref={(el) => {
                           if (el) {
                             blockRefs.current.set(block.id, el);
-                            if (el.textContent !== block.content) {
+                            if (activeEditingBlockRef.current !== block.id && el.textContent !== block.content) {
                               el.textContent = block.content;
                             }
                           } else {
@@ -691,14 +715,21 @@ export default function NotesPage() {
                         data-block-id={block.id}
                         className={blockClasses}
                         style={{ flex: 1 }}
-                        onInput={(e) => {
+                        onFocus={() => {
+                          activeEditingBlockRef.current = block.id;
+                        }}
+                        onBlur={(e) => {
+                          activeEditingBlockRef.current = null;
                           const target = e.target as HTMLElement;
-                          updateBlock(block.id, { content: target.textContent || "" });
+                          const content = target.textContent || "";
+                          setBlocks(prev => prev.map(b => 
+                            b.id === block.id ? { ...b, content } : b
+                          ));
+                          saveNote();
                         }}
                         onKeyDown={(e) => handleBlockKeyDown(e, block.id, index)}
-                        onBlur={saveNote}
                         data-testid={`editor-block-${block.id}`}
-                      >{block.content}</BlockTag>
+                      />
                     </div>
                   );
                 })}
