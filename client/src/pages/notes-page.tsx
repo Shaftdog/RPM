@@ -677,8 +677,14 @@ export default function NotesPage() {
                       
                       <BlockTag
                         ref={(el) => {
-                          if (el) blockRefs.current.set(block.id, el);
-                          else blockRefs.current.delete(block.id);
+                          if (el) {
+                            blockRefs.current.set(block.id, el);
+                            if (el.textContent !== block.content) {
+                              el.textContent = block.content;
+                            }
+                          } else {
+                            blockRefs.current.delete(block.id);
+                          }
                         }}
                         contentEditable
                         suppressContentEditableWarning
@@ -692,8 +698,7 @@ export default function NotesPage() {
                         onKeyDown={(e) => handleBlockKeyDown(e, block.id, index)}
                         onBlur={saveNote}
                         data-testid={`editor-block-${block.id}`}
-                        dangerouslySetInnerHTML={{ __html: block.content }}
-                      />
+                      >{block.content}</BlockTag>
                     </div>
                   );
                 })}
