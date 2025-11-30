@@ -281,10 +281,10 @@ export default function NotesPage() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       
-      // If current block is empty and is a list, convert to paragraph (exit list)
+      // If current block is empty and is a list, convert to paragraph and reset indent (exit list)
       if (currentDomContent === "" && (block.type === "ol" || block.type === "ul")) {
         setBlocks(prev => prev.map(b => 
-          b.id === blockId ? { ...b, type: "paragraph" as const } : b
+          b.id === blockId ? { ...b, type: "paragraph" as const, indentLevel: 0 } : b
         ));
         debouncedSave();
         return;
@@ -379,11 +379,15 @@ export default function NotesPage() {
   };
 
   const isHiddenByCollapse = (blockIndex: number): boolean => {
+    const currentIndent = blocks[blockIndex].indentLevel;
+    // Check all ancestors (blocks with lower indent level) to see if any are collapsed
     for (let i = blockIndex - 1; i >= 0; i--) {
       const prevBlock = blocks[i];
-      if (prevBlock.indentLevel < blocks[blockIndex].indentLevel) {
+      // If this block has a lower indent level, it's a potential parent
+      if (prevBlock.indentLevel < currentIndent) {
+        // If this parent is collapsed, hide current block
         if (prevBlock.isCollapsed) return true;
-        break;
+        // Continue checking further ancestors (don't break - check all levels up)
       }
     }
     return false;
