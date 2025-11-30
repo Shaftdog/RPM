@@ -345,16 +345,33 @@ export default function NotesPage() {
     if (e.key === "Tab") {
       e.preventDefault();
       const freshContent = currentDomContent;
+      const newIndentLevel = e.shiftKey 
+        ? Math.max(0, block.indentLevel - 1) 
+        : Math.min(5, block.indentLevel + 1);
+      
       setBlocks(prev => prev.map(b => 
         b.id === blockId ? { 
           ...b, 
           content: freshContent,
-          indentLevel: e.shiftKey 
-            ? Math.max(0, b.indentLevel - 1) 
-            : Math.min(5, b.indentLevel + 1)
+          indentLevel: newIndentLevel
         } : b
       ));
       debouncedSave();
+      
+      // Maintain focus on the same block after indent change
+      setTimeout(() => {
+        const ref = blockRefs.current.get(blockId);
+        if (ref) {
+          ref.focus();
+          // Move cursor to end of content
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(ref);
+          range.collapse(false);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+      }, 0);
     }
   };
 
@@ -810,6 +827,15 @@ export default function NotesPage() {
                         style={{ flex: 1 }}
                         onFocus={() => {
                           activeEditingBlockRef.current = block.id;
+                        }}
+                        onInput={(e) => {
+                          // Update content state on each input to keep in sync
+                          const target = e.target as HTMLElement;
+                          const content = target.textContent || "";
+                          setBlocks(prev => prev.map(b => 
+                            b.id === block.id ? { ...b, content } : b
+                          ));
+                          debouncedSave();
                         }}
                         onBlur={(e) => {
                           activeEditingBlockRef.current = null;
