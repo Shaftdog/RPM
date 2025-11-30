@@ -45,6 +45,47 @@ function generateBlockId(): string {
   return Math.random().toString(36).substring(2, 11);
 }
 
+// Helper functions for outline numbering (placed outside component for performance)
+function toAlpha(n: number): string {
+  let result = '';
+  let num = n;
+  while (num > 0) {
+    num--;
+    result = String.fromCharCode(97 + (num % 26)) + result;
+    num = Math.floor(num / 26);
+  }
+  return result;
+}
+
+function toRoman(n: number): string {
+  const romanNumerals = [
+    ['', 'i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix'],
+    ['', 'x', 'xx', 'xxx', 'xl', 'l', 'lx', 'lxx', 'lxxx', 'xc'],
+    ['', 'c', 'cc', 'ccc', 'cd', 'd', 'dc', 'dcc', 'dccc', 'cm'],
+  ];
+  if (n <= 0 || n >= 1000) return n.toString();
+  const ones = n % 10;
+  const tens = Math.floor(n / 10) % 10;
+  const hundreds = Math.floor(n / 100) % 10;
+  return romanNumerals[2][hundreds] + romanNumerals[1][tens] + romanNumerals[0][ones];
+}
+
+// Get outline marker based on indent level
+// Level 0: 1. 2. 3.    Level 1: a. b. c.    Level 2: i. ii. iii.
+// Level 3: 1) 2) 3)    Level 4: a) b) c)    Level 5: i) ii) iii)
+function getOutlineMarker(indentLevel: number, count: number): string {
+  const style = indentLevel % 6;
+  switch (style) {
+    case 0: return `${count}.`;
+    case 1: return `${toAlpha(count)}.`;
+    case 2: return `${toRoman(count)}.`;
+    case 3: return `${count})`;
+    case 4: return `${toAlpha(count)})`;
+    case 5: return `${toRoman(count)})`;
+    default: return `${count}.`;
+  }
+}
+
 export default function NotesPage() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -675,9 +716,11 @@ export default function NotesPage() {
                   const showCollapseToggle = hasChildren(index);
                   const paddingLeft = block.indentLevel * 24;
                   
-                  // Calculate list number for ordered lists
-                  const getListNumber = () => {
-                    if (block.type !== "ol") return 0;
+                  // Calculate list marker for ordered lists based on indent level
+                  const getListMarker = (): string => {
+                    if (block.type !== "ol") return "•";
+                    
+                    // Count position at this indent level
                     let count = 1;
                     for (let i = index - 1; i >= 0; i--) {
                       const prevBlock = blocks[i];
@@ -687,10 +730,11 @@ export default function NotesPage() {
                         break;
                       }
                     }
-                    return count;
+                    
+                    return getOutlineMarker(block.indentLevel, count);
                   };
                   
-                  const listNumber = getListNumber();
+                  const listMarker = getListMarker();
                   const isListItem = block.type === "ul" || block.type === "ol";
                   
                   const BlockTag = block.type === "h1" ? "h1" : 
@@ -739,8 +783,8 @@ export default function NotesPage() {
                       </div>
                       
                       {isListItem && (
-                        <span className="text-muted-foreground shrink-0 w-6 text-right pr-1" data-testid={`list-marker-${block.id}`}>
-                          {block.type === "ol" ? `${listNumber}.` : "•"}
+                        <span className="text-muted-foreground shrink-0 min-w-[24px] text-right pr-2" data-testid={`list-marker-${block.id}`}>
+                          {listMarker}
                         </span>
                       )}
                       
