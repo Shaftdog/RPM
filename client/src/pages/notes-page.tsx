@@ -239,9 +239,22 @@ export default function NotesPage() {
     
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      
+      // If current block is empty and is a list, convert to paragraph (exit list)
+      if (currentDomContent === "" && (block.type === "ol" || block.type === "ul")) {
+        setBlocks(prev => prev.map(b => 
+          b.id === blockId ? { ...b, type: "paragraph" as const } : b
+        ));
+        debouncedSave();
+        return;
+      }
+      
+      // Preserve list type when creating new block
+      const newBlockType = (block.type === "ol" || block.type === "ul") ? block.type : "paragraph";
+      
       const newBlock: NoteBlock = {
         id: generateBlockId(),
-        type: "paragraph",
+        type: newBlockType,
         content: "",
         indentLevel: block.indentLevel,
         isFlagged: false,
@@ -265,6 +278,16 @@ export default function NotesPage() {
     
     if (e.key === "Backspace" && currentDomContent === "" && blocks.length > 1) {
       e.preventDefault();
+      
+      // If list item is empty on backspace, convert to paragraph first before deleting
+      if (block.type === "ol" || block.type === "ul") {
+        setBlocks(prev => prev.map(b => 
+          b.id === blockId ? { ...b, type: "paragraph" as const } : b
+        ));
+        debouncedSave();
+        return;
+      }
+      
       const newBlocks = blocks.filter(b => b.id !== blockId);
       setBlocks(newBlocks);
       debouncedSave();
@@ -646,215 +669,115 @@ export default function NotesPage() {
 
             <ScrollArea className="flex-1">
               <div className="p-6 space-y-1">
-                {(() => {
-                  const elements = [];
-                  let i = 0;
+                {blocks.map((block, index) => {
+                  if (isHiddenByCollapse(index)) return null;
                   
-                  while (i < blocks.length) {
-                    const block = blocks[i];
-                    
-                    if (isHiddenByCollapse(i)) {
-                      i++;
-                      continue;
-                    }
-                    
-                    // Check if this is a list block
-                    if (block.type === "ul" || block.type === "ol") {
-                      const listType = block.type;
-                      const listItems = [];
-                      const startIndex = i;
-                      
-                      // Collect all consecutive list items at same or deeper level
-                      while (i < blocks.length) {
-                        const currentBlock = blocks[i];
-                        
-                        if (isHiddenByCollapse(i)) {
-                          i++;
-                          continue;
-                        }
-                        
-                        // Stop if we hit a different list type or non-list block at base level
-                        if (currentBlock.type !== listType && !(currentBlock.type === listType || (currentBlock.type === "ul" || currentBlock.type === "ol") && currentBlock.indentLevel > block.indentLevel)) {
-                          break;
-                        }
-                        
-                        // If it's the same type and same or greater indent level, include it
-                        if ((currentBlock.type === listType && currentBlock.indentLevel === block.indentLevel) ||
-                            ((currentBlock.type === "ul" || currentBlock.type === "ol") && currentBlock.indentLevel > block.indentLevel)) {
-                          listItems.push({ block: currentBlock, index: i });
-                          i++;
-                        } else if (currentBlock.type !== "ul" && currentBlock.type !== "ol") {
-                          // Non-list block at same level ends the list
-                          break;
-                        } else {
-                          i++;
-                        }
+                  const showCollapseToggle = hasChildren(index);
+                  const paddingLeft = block.indentLevel * 24;
+                  
+                  // Calculate list number for ordered lists
+                  const getListNumber = () => {
+                    if (block.type !== "ol") return 0;
+                    let count = 1;
+                    for (let i = index - 1; i >= 0; i--) {
+                      const prevBlock = blocks[i];
+                      if (prevBlock.type === "ol" && prevBlock.indentLevel === block.indentLevel) {
+                        count++;
+                      } else if (prevBlock.type !== "ol" || prevBlock.indentLevel < block.indentLevel) {
+                        break;
                       }
-                      
-                      // Render the list
-                      const ListTag = listType === "ol" ? "ol" : "ul";
-                      elements.push(
-                        <ListTag key={`list-${startIndex}`} className={`${listType === "ol" ? "list-decimal" : "list-disc"} list-inside space-y-0`}>
-                          {listItems.map(({ block: item, index: itemIndex }) => {
-                            const indentLevel = item.indentLevel - block.indentLevel;
-                            const paddingLeft = indentLevel * 24;
-                            const showCollapseToggle = hasChildren(itemIndex);
-                            
-                            return (
-                              <li key={item.id} style={{ paddingLeft }} data-testid={`list-item-${item.id}`}>
-                                <div className="group flex items-start gap-1 -ml-6">
-                                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5 shrink-0">
-                                    {showCollapseToggle ? (
-                                      <button
-                                        onClick={() => toggleCollapse(item.id)}
-                                        className="p-0.5 hover:bg-accent rounded"
-                                        data-testid={`button-collapse-${item.id}`}
-                                      >
-                                        {item.isCollapsed ? (
-                                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                                        ) : (
-                                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                                        )}
-                                      </button>
-                                    ) : (
-                                      <div className="w-4.5" />
-                                    )}
-                                    
-                                    <button
-                                      onClick={() => toggleFlag(item.id)}
-                                      className={`p-0.5 rounded ${item.isFlagged ? "bg-amber-200 dark:bg-amber-800" : "hover:bg-accent"}`}
-                                      data-testid={`button-flag-${item.id}`}
-                                    >
-                                      <Flag className={`h-3.5 w-3.5 ${item.isFlagged ? "text-amber-600 dark:text-amber-400 fill-current" : "text-muted-foreground"}`} />
-                                    </button>
-                                  </div>
-                                  
-                                  <div
-                                    ref={(el) => {
-                                      if (el) {
-                                        blockRefs.current.set(item.id, el);
-                                        if (activeEditingBlockRef.current !== item.id && el.textContent !== item.content) {
-                                          el.textContent = item.content;
-                                        }
-                                      } else {
-                                        blockRefs.current.delete(item.id);
-                                      }
-                                    }}
-                                    contentEditable
-                                    suppressContentEditableWarning
-                                    data-block-id={item.id}
-                                    className={`outline-none min-h-[1.5em] !leading-tight flex-1 ${item.isFlagged ? "bg-amber-100 dark:bg-amber-900/30 rounded px-1" : ""}`}
-                                    onFocus={() => {
-                                      activeEditingBlockRef.current = item.id;
-                                    }}
-                                    onBlur={(e) => {
-                                      activeEditingBlockRef.current = null;
-                                      const target = e.target as HTMLElement;
-                                      const content = target.textContent || "";
-                                      setBlocks(prev => prev.map(b => 
-                                        b.id === item.id ? { ...b, content } : b
-                                      ));
-                                      saveNote();
-                                    }}
-                                    onKeyDown={(e) => handleBlockKeyDown(e, item.id, itemIndex)}
-                                    data-testid={`editor-block-${item.id}`}
-                                  />
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ListTag>
-                      );
-                    } else {
-                      // Non-list block
-                      const showCollapseToggle = hasChildren(i);
-                      const paddingLeft = block.indentLevel * 24;
-                      
-                      const BlockTag = block.type === "h1" ? "h1" : 
-                                       block.type === "h2" ? "h2" : 
-                                       block.type === "h3" ? "h3" : "div";
-                      
-                      const blockClasses = `
-                        ${block.type === "h1" ? "text-2xl font-bold" : ""}
-                        ${block.type === "h2" ? "text-xl font-semibold" : ""}
-                        ${block.type === "h3" ? "text-lg font-medium" : ""}
-                        ${block.isFlagged ? "bg-amber-100 dark:bg-amber-900/30 rounded px-1" : ""}
-                        outline-none min-h-[1.5em] !leading-tight
-                      `;
-                      
-                      elements.push(
-                        <div 
-                          key={block.id}
-                          className="group flex items-start gap-1"
-                          style={{ paddingLeft }}
-                          data-testid={`block-container-${block.id}`}
-                        >
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5 shrink-0">
-                            {showCollapseToggle ? (
-                              <button
-                                onClick={() => toggleCollapse(block.id)}
-                                className="p-0.5 hover:bg-accent rounded"
-                                data-testid={`button-collapse-${block.id}`}
-                              >
-                                {block.isCollapsed ? (
-                                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                                ) : (
-                                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                                )}
-                              </button>
-                            ) : (
-                              <div className="w-4.5" />
-                            )}
-                            
-                            <button
-                              onClick={() => toggleFlag(block.id)}
-                              className={`p-0.5 rounded ${block.isFlagged ? "bg-amber-200 dark:bg-amber-800" : "hover:bg-accent"}`}
-                              data-testid={`button-flag-${block.id}`}
-                            >
-                              <Flag className={`h-3.5 w-3.5 ${block.isFlagged ? "text-amber-600 dark:text-amber-400 fill-current" : "text-muted-foreground"}`} />
-                            </button>
-                          </div>
-                          
-                          <BlockTag
-                            ref={(el) => {
-                              if (el) {
-                                blockRefs.current.set(block.id, el);
-                                if (activeEditingBlockRef.current !== block.id && el.textContent !== block.content) {
-                                  el.textContent = block.content;
-                                }
-                              } else {
-                                blockRefs.current.delete(block.id);
-                              }
-                            }}
-                            contentEditable
-                            suppressContentEditableWarning
-                            data-block-id={block.id}
-                            className={blockClasses}
-                            style={{ flex: 1 }}
-                            onFocus={() => {
-                              activeEditingBlockRef.current = block.id;
-                            }}
-                            onBlur={(e) => {
-                              activeEditingBlockRef.current = null;
-                              const target = e.target as HTMLElement;
-                              const content = target.textContent || "";
-                              setBlocks(prev => prev.map(b => 
-                                b.id === block.id ? { ...b, content } : b
-                              ));
-                              saveNote();
-                            }}
-                            onKeyDown={(e) => handleBlockKeyDown(e, block.id, i)}
-                            data-testid={`editor-block-${block.id}`}
-                          />
-                        </div>
-                      );
-                      
-                      i++;
                     }
-                  }
+                    return count;
+                  };
                   
-                  return elements;
-                })()}
+                  const listNumber = getListNumber();
+                  const isListItem = block.type === "ul" || block.type === "ol";
+                  
+                  const BlockTag = block.type === "h1" ? "h1" : 
+                                   block.type === "h2" ? "h2" : 
+                                   block.type === "h3" ? "h3" : "div";
+                  
+                  const blockClasses = `
+                    ${block.type === "h1" ? "text-2xl font-bold" : ""}
+                    ${block.type === "h2" ? "text-xl font-semibold" : ""}
+                    ${block.type === "h3" ? "text-lg font-medium" : ""}
+                    ${block.isFlagged ? "bg-amber-100 dark:bg-amber-900/30 rounded px-1" : ""}
+                    outline-none min-h-[1.5em] !leading-tight
+                  `;
+                  
+                  return (
+                    <div 
+                      key={block.id}
+                      className="group flex items-start gap-1"
+                      style={{ paddingLeft }}
+                      data-testid={`block-container-${block.id}`}
+                    >
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5 shrink-0">
+                        {showCollapseToggle ? (
+                          <button
+                            onClick={() => toggleCollapse(block.id)}
+                            className="p-0.5 hover:bg-accent rounded"
+                            data-testid={`button-collapse-${block.id}`}
+                          >
+                            {block.isCollapsed ? (
+                              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                          </button>
+                        ) : (
+                          <div className="w-4.5" />
+                        )}
+                        
+                        <button
+                          onClick={() => toggleFlag(block.id)}
+                          className={`p-0.5 rounded ${block.isFlagged ? "bg-amber-200 dark:bg-amber-800" : "hover:bg-accent"}`}
+                          data-testid={`button-flag-${block.id}`}
+                        >
+                          <Flag className={`h-3.5 w-3.5 ${block.isFlagged ? "text-amber-600 dark:text-amber-400 fill-current" : "text-muted-foreground"}`} />
+                        </button>
+                      </div>
+                      
+                      {isListItem && (
+                        <span className="text-muted-foreground shrink-0 w-6 text-right pr-1" data-testid={`list-marker-${block.id}`}>
+                          {block.type === "ol" ? `${listNumber}.` : "•"}
+                        </span>
+                      )}
+                      
+                      <BlockTag
+                        ref={(el) => {
+                          if (el) {
+                            blockRefs.current.set(block.id, el);
+                            if (activeEditingBlockRef.current !== block.id && el.textContent !== block.content) {
+                              el.textContent = block.content;
+                            }
+                          } else {
+                            blockRefs.current.delete(block.id);
+                          }
+                        }}
+                        contentEditable
+                        suppressContentEditableWarning
+                        data-block-id={block.id}
+                        className={blockClasses}
+                        style={{ flex: 1 }}
+                        onFocus={() => {
+                          activeEditingBlockRef.current = block.id;
+                        }}
+                        onBlur={(e) => {
+                          activeEditingBlockRef.current = null;
+                          const target = e.target as HTMLElement;
+                          const content = target.textContent || "";
+                          setBlocks(prev => prev.map(b => 
+                            b.id === block.id ? { ...b, content } : b
+                          ));
+                          saveNote();
+                        }}
+                        onKeyDown={(e) => handleBlockKeyDown(e, block.id, index)}
+                        data-testid={`editor-block-${block.id}`}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </ScrollArea>
           </>
