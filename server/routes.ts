@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
-import { extractTasksFromContent, generateDailySchedule, processAICommand, analyzeImage, extractRecurringTasksFromContent, processRecurringTaskChatCommand } from "./openai";
+import { extractTasksFromContent, generateDailySchedule, processAICommand, analyzeImage, extractRecurringTasksFromContent, processRecurringTaskChatCommand, processDailyChat, ChatMessage } from "./openai";
 import { 
   insertTaskSchema, 
   insertRecurringTaskSchema, 
@@ -1442,6 +1442,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error processing AI chat:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to process AI request";
       res.status(500).json({ message: errorMessage });
+    }
+  });
+
+  // Daily AI Chat endpoint for running conversations
+  app.post('/api/daily/chat', isAuthenticated, async (req: any, res) => {
+    try {
+      const { message, conversationHistory, selectedDate } = req.body;
+      
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ message: "Message is required" });
+      }
+      
+      // Get context data for the selected date
+      const tasks = await storage.getTasks(req.user.id);
+      const scheduleEntries = await storage.getDailyScheduleEntries(
+        req.user.id, 
+        new Date(selectedDate || new Date().toISOString().split('T')[0])
+      );
+      
+      // Build scheduled tasks context
+      const scheduledTasks = scheduleEntries
+        .filter(entry => entry.plannedTaskId)
+        .map(entry => {
+          const task = tasks.find(t => t.id === entry.plannedTaskId);
+          return {
+            name: task?.name || entry.reflection || 'Unknown Task',
+            timeBlock: entry.timeBlock,
+            quartile: entry.quartile,
+            status: entry.status
+          };
+        });
+      
+      // Build available tasks (backlog tasks)
+      const availableTasks = tasks
+        .filter(t => t.timeHorizon === 'BACKLOG' || t.timeHorizon === 'Today' || t.timeHorizon === 'Week')
+        .map(t => ({
+          name: t.name,
+          category: t.category,
+          priority: t.priority,
+          timeHorizon: t.timeHorizon
+        }));
+      
+      const context = {
+        selectedDate: selectedDate || new Date().toISOString().split('T')[0],
+        scheduledTasks,
+        availableTasks
+      };
+      
+      const validHistory: ChatMessage[] = (conversationHistory || [])
+        .filter((msg: any) => msg && msg.role && msg.content)
+        .map((msg: any) => ({
+          role: msg.role as "user" | "assistant",
+          content: msg.content
+        }));
+      
+      const result = await processDailyChat(message.trim(), validHistory, context);
+      res.json(result);
+    } catch (error) {
+      console.error("Error processing daily chat:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to process chat request";
+      res.status(500).json({ message: errorMessage, response: "I'm having trouble right now. Please try again." });
     }
   });
 
