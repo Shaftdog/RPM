@@ -1,9 +1,11 @@
 import OpenAI from "openai";
 import { TIME_BLOCKS } from "@shared/schema";
 
-// Using GPT-5, the newest OpenAI model released August 7, 2025
+// Using Replit AI Integrations for OpenAI-compatible API access
+// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key",
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "default_key",
   timeout: 180000, // 3 minute timeout for image analysis
 });
 
@@ -760,5 +762,74 @@ export async function processRecurringTaskChatCommand(
   } catch (error) {
     console.error("Error processing recurring task chat command:", error);
     throw new Error("Failed to process chat command");
+  }
+}
+
+// Interface for chat messages
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+// Daily AI Assistant chat function for running conversations
+export async function processDailyChat(
+  message: string,
+  conversationHistory: ChatMessage[],
+  context: {
+    selectedDate: string;
+    scheduledTasks: Array<{ name: string; timeBlock: string; quartile: number; status: string }>;
+    availableTasks: Array<{ name: string; category: string; priority: string; timeHorizon: string }>;
+    userSettings?: { workDayStart?: string; workDayEnd?: string };
+  }
+): Promise<{ response: string }> {
+  try {
+    const systemPrompt = `You are a helpful AI assistant integrated into a personal productivity system. Your role is to help users with their daily planning, task management, and productivity.
+
+Current context:
+- Today's date: ${context.selectedDate}
+- Scheduled tasks for today: ${context.scheduledTasks.length > 0 
+    ? context.scheduledTasks.map(t => `"${t.name}" in ${t.timeBlock} (Q${t.quartile}) - ${t.status}`).join(', ')
+    : 'No tasks scheduled yet'}
+- Available time blocks: ${TIME_BLOCKS.map(b => `${b.name} (${b.start}-${b.end})`).join(', ')}
+- Available tasks in backlog: ${context.availableTasks.slice(0, 10).map(t => `"${t.name}" (${t.priority} priority)`).join(', ')}${context.availableTasks.length > 10 ? ` and ${context.availableTasks.length - 10} more...` : ''}
+
+You can help users with:
+1. Reviewing and discussing their daily schedule
+2. Suggesting task prioritization strategies
+3. Providing productivity tips and time management advice
+4. Answering questions about their tasks and goals
+5. Offering encouragement and motivation
+6. Helping them think through complex tasks or decisions
+7. Discussing work-life balance and energy management
+
+Be conversational, supportive, and practical. Keep responses concise but helpful. If the user asks about modifying their schedule, explain that they can drag and drop tasks in the interface or use the AI Schedule button for automatic scheduling.`;
+
+    // Build messages array with conversation history
+    const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+      { role: "system", content: systemPrompt }
+    ];
+
+    // Add conversation history (limit to last 20 messages for context window)
+    const recentHistory = conversationHistory.slice(-20);
+    for (const msg of recentHistory) {
+      messages.push({ role: msg.role, content: msg.content });
+    }
+
+    // Add current user message
+    messages.push({ role: "user", content: message });
+
+    // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages,
+      max_completion_tokens: 1024,
+    });
+
+    const assistantResponse = response.choices[0].message.content || "I'm here to help! What would you like to discuss about your daily planning?";
+    
+    return { response: assistantResponse };
+  } catch (error) {
+    console.error("Error processing daily chat:", error);
+    return { response: "I apologize, but I'm having trouble processing your message right now. Please try again in a moment." };
   }
 }
