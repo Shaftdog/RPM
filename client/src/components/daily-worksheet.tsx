@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target, Info, Trash2, CalendarDays, Clock, User } from "lucide-react";
+import { Play, Pause, Plus, Minus, Camera, Calendar, ChevronDown, ChevronUp, Target, Info, Trash2, CalendarDays, Clock, User, MessageCircle, Send, X, Bot } from "lucide-react";
 import { isToday } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -341,6 +341,13 @@ export default function DailyWorksheet() {
   
   // Current date/time widget
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
+  
+  // AI Chat state
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessage, setChatMessage] = useState("");
+  const [chatHistory, setChatHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([
+    { role: "assistant", content: "Hi! I'm your AI assistant. I can help you with your daily planning, task prioritization, productivity tips, or just chat about anything. How can I help you today?" }
+  ]);
   
   // Top panel state
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
@@ -897,6 +904,47 @@ export default function DailyWorksheet() {
       });
     },
   });
+
+  // Conversational AI chat mutation for running chat in Daily
+  const dailyChatMutation = useMutation({
+    mutationFn: async ({ message, fullHistory }: { message: string; fullHistory: Array<{ role: "user" | "assistant"; content: string }> }) => {
+      const response = await apiRequest("POST", "/api/daily/chat", { 
+        message,
+        conversationHistory: fullHistory,
+        selectedDate
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setChatHistory(prev => [...prev, { role: "assistant", content: data.response }]);
+    },
+    onError: () => {
+      // Remove the optimistic user message on error
+      setChatHistory(prev => prev.slice(0, -1));
+      toast({
+        title: "Chat error",
+        description: "I'm having trouble connecting right now. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSendChatMessage = () => {
+    if (!chatMessage.trim() || dailyChatMutation.isPending) return;
+    
+    const userMessage = chatMessage.trim();
+    const newUserEntry = { role: "user" as const, content: userMessage };
+    
+    // Build full history including the new user message for the API call
+    const fullHistory = [...chatHistory, newUserEntry];
+    
+    // Optimistically add user message to UI
+    setChatHistory(fullHistory);
+    
+    // Send to API with full history
+    dailyChatMutation.mutate({ message: userMessage, fullHistory });
+    setChatMessage("");
+  };
 
   const createTaskMutation = useMutation({
     mutationFn: async (taskName: string) => {
@@ -2567,6 +2615,99 @@ export default function DailyWorksheet() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* AI Chat Floating Button */}
+      <Button
+        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50 bg-primary hover:bg-primary/90"
+        onClick={() => setIsChatOpen(true)}
+        style={{ display: isChatOpen ? 'none' : 'flex' }}
+        data-testid="button-open-chat"
+      >
+        <MessageCircle className="h-6 w-6" />
+      </Button>
+
+      {/* AI Chat Panel */}
+      {isChatOpen && (
+        <div 
+          className="fixed bottom-6 right-6 w-96 h-[500px] bg-background border rounded-lg shadow-xl z-50 flex flex-col"
+          data-testid="panel-ai-chat"
+        >
+          {/* Chat Header */}
+          <div className="flex items-center justify-between p-3 border-b bg-primary text-primary-foreground rounded-t-lg">
+            <div className="flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              <span className="font-medium">AI Assistant</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 hover:bg-primary-foreground/20"
+              onClick={() => setIsChatOpen(false)}
+              data-testid="button-close-chat"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Chat Messages */}
+          <ScrollArea className="flex-1 p-3">
+            <div className="space-y-3">
+              {chatHistory.map((msg, index) => (
+                <div 
+                  key={index} 
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  data-testid={`chat-message-${index}`}
+                >
+                  <div 
+                    className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                      msg.role === 'user' 
+                        ? 'bg-primary text-primary-foreground' 
+                        : 'bg-muted text-foreground'
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {dailyChatMutation.isPending && (
+                <div className="flex justify-start" data-testid="chat-loading">
+                  <div className="bg-muted text-foreground rounded-lg px-3 py-2 text-sm">
+                    <span className="animate-pulse">Thinking...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+
+          {/* Chat Input */}
+          <div className="p-3 border-t">
+            <div className="flex gap-2">
+              <Input
+                value={chatMessage}
+                onChange={(e) => setChatMessage(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendChatMessage();
+                  }
+                }}
+                disabled={dailyChatMutation.isPending}
+                data-testid="input-chat-message"
+              />
+              <Button
+                size="icon"
+                onClick={handleSendChatMessage}
+                disabled={!chatMessage.trim() || dailyChatMutation.isPending}
+                data-testid="button-send-chat"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </DndProvider>
   );

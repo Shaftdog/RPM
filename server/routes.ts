@@ -1456,15 +1456,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get context data for the selected date
       const tasks = await storage.getTasks(req.user.id);
-      const scheduleEntries = await storage.getDailyScheduleEntries(
+      const scheduleEntries = await storage.getDailySchedule(
         req.user.id, 
         new Date(selectedDate || new Date().toISOString().split('T')[0])
       );
       
       // Build scheduled tasks context
       const scheduledTasks = scheduleEntries
-        .filter(entry => entry.plannedTaskId)
-        .map(entry => {
+        .filter((entry: any) => entry.plannedTaskId)
+        .map((entry: any) => {
           const task = tasks.find(t => t.id === entry.plannedTaskId);
           return {
             name: task?.name || entry.reflection || 'Unknown Task',
