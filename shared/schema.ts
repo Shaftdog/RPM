@@ -192,7 +192,7 @@ export const notes = pgTable("notes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull().default("Untitled"),
-  content: jsonb("content").$type<{ blocks: Array<{ type: string; content: string }> }>().default({ blocks: [] }),
+  content: jsonb("content").$type<{ blocks: Array<{ id?: string; type: string; content: string; indentLevel?: number; isFlagged?: boolean; isCollapsed?: boolean }> }>().default({ blocks: [] }),
   tags: jsonb("tags").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -417,8 +417,12 @@ export const insertNoteSchema = createInsertSchema(notes).omit({
 }).extend({
   content: z.object({
     blocks: z.array(z.object({
+      id: z.string().optional(),
       type: z.string(),
       content: z.string(),
+      indentLevel: z.number().optional().default(0),
+      isFlagged: z.boolean().optional().default(false),
+      isCollapsed: z.boolean().optional().default(false),
     })),
   }).optional(),
   tags: z.array(z.string()).optional(),
