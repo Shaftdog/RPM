@@ -585,7 +585,10 @@ export default function NotesPage() {
                   }`}
                   onClick={() => {
                     setSelectedNoteId(note.id);
-                    setIsSidebarOpen(false);
+                    // Only close sidebar on mobile (screens < 768px)
+                    if (window.innerWidth < 768) {
+                      setIsSidebarOpen(false);
+                    }
                   }}
                   data-testid={`card-note-${note.id}`}
                 >

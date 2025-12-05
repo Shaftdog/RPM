@@ -1,0 +1,50 @@
+Prompt: Fix Left Sidebar Disappearing When Clicking a Note
+Problem: When you click on a note in the Notes sidebar to view it, the entire left sidebar (Notes panel containing the list of notes) disappears, expanding the note editor to full width. This makes it impossible to switch between notes without first navigating away to a different tab (like Recurring or Analytics) and then returning to Notes.
+
+Current Behavior:
+
+Notes view starts with sidebar visible showing the list of all notes
+
+User clicks on a note to view it
+
+Left sidebar immediately disappears
+
+Note editor expands to fill the entire available space
+
+User cannot click on another note to switch - the sidebar is gone
+
+To switch notes, user must: click another top tab → click back to Notes tab → then can see sidebar again
+
+Expected Behavior:
+
+Left sidebar should always remain visible and interactive when in Notes view
+
+Clicking on a different note in the sidebar should swap the content in the editor pane only
+
+Sidebar should never hide or collapse when interacting with notes
+
+Users should be able to quickly switch between multiple notes by clicking them in the sidebar
+
+Root Cause: The sidebar visibility is likely being toggled or hidden based on note selection/focus events, or CSS is hiding the sidebar container when the editor is in focus.
+
+Required Fix:
+
+Maintain persistent split-view layout in Notes tab (sidebar on left, editor on right)
+
+Ensure sidebar remains visible at all times in Notes view
+
+Clicking a note should only update the main editor content, not affect sidebar visibility
+
+Check for any CSS display: none, visibility: hidden, or JavaScript logic that toggles the sidebar
+
+Implementation Checklist:
+
+ Review CSS for the Notes container layout - verify sidebar is not hidden on certain states
+
+ Check JavaScript event handlers on note items - ensure clicking them doesn't toggle sidebar visibility
+
+ Verify the sidebar container doesn't have display: none applied through class or inline styles
+
+ Test: Click multiple notes in the sidebar - sidebar should remain visible and clickable throughout
+
+ Test: Verify you can switch between 3+ different notes without the sidebar disappearing
