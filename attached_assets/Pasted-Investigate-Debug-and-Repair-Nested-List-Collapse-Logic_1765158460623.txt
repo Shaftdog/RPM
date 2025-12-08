@@ -1,0 +1,64 @@
+Investigate, Debug, and Repair Nested List Collapse Logic
+Priority: High Component: Rich Text Editor / Nested List Renderer Reference: Video Timestamp 01:10
+
+1. Problem Description
+A logic error occurs when collapsing a nested list item that contains children.
+
+Current Behavior: When the user clicks the collapse arrow (toggle) on a nested item (Indent Level 1), the item correctly hides its children, but incorrectly removes its own indentation, reverting visually to the Root Level (Level 0).
+
+Expected Behavior: When collapsed, the nested item must maintain its current indentation level relative to its parent. It should not jump to the left.
+
+2. Lead Engineer's Assessment (Hypotheses)
+Use these pointers as a starting place for your investigation, but verify the root cause independently:
+
+Hypothesis A (Rendering Logic): The styling logic for margin-left or padding-left might be conditionally relying on the presence of visible children. When collapsed, the renderer sees "0 visible children" and defaults to 0 indent.
+
+Hypothesis B (State Mutation): The toggleCollapse function might be accidentally mutating the depth or level property of the node object when changing the collapsed boolean.
+
+Hypothesis C (CSS Selector Issue): If using CSS siblings or pseudo-selectors (e.g., ul > li), the collapse action might be changing the DOM structure in a way that breaks the CSS cascade for indentation.
+
+3. Execution Directives
+Phase 1: Investigation & Verification
+Locate the Handler: Find the specific event handler responsible for the "Collapse/Expand" toggle (likely named toggleNode, handleCollapse, or similar).
+
+Inspect State: Log the node object before and after the click.
+
+Check: Does the indent or depth value change in the data?
+
+Check: If the data remains correct, inspect the CSS class application.
+
+Reproduce: Create a test case with the structure:
+
+Parent (Level 0)
+
+Child (Level 1) -> TARGET
+
+Grandchild (Level 2)
+
+Action: Trigger collapse on TARGET.
+
+Verify: Assert that TARGET indentation style remains > 0.
+
+Phase 2: Repair
+Decouple State: Ensure that the visual indentation logic is derived strictly from the node's depth property, not its expansion state or child count.
+
+Fix Event Bubbling: If the toggle button is nested inside the content div, ensure e.stopPropagation() is used so it doesn't trigger parent re-renders that might reset style.
+
+Implement Fix: Apply the code correction.
+
+Phase 3: Regression Testing
+After applying the fix, verify the following scenarios to ensure no side effects:
+
+The "Sibling" Test: Ensure collapsing one node does not affect the indentation of its siblings.
+
+The "Deep Nest" Test: Ensure collapsing a Level 3 node preserves Level 3 indentation (do not just test Level 1).
+
+The "Re-expand" Test: Ensure that expanding the node again restores the children correctly without shifting the parent.
+
+Output Required:
+
+Identification of the root cause.
+
+The corrected code block.
+
+Confirmation that the fix was verified against the "Deep Nest" scenario.

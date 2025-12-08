@@ -783,7 +783,10 @@ export default function NotesPage() {
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5 shrink-0">
                         {showCollapseToggle ? (
                           <button
-                            onClick={() => toggleCollapse(block.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleCollapse(block.id);
+                            }}
                             className="p-0.5 hover:bg-accent rounded"
                             data-testid={`button-collapse-${block.id}`}
                           >
@@ -794,7 +797,7 @@ export default function NotesPage() {
                             )}
                           </button>
                         ) : (
-                          <div className="w-4.5" />
+                          <div className="w-[18px]" />
                         )}
                         
                         <button
