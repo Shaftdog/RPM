@@ -382,6 +382,224 @@ export default function NotesPage() {
     debouncedSave();
   };
 
+  const handlePaste = (e: React.ClipboardEvent, blockId: string, blockIndex: number) => {
+    e.preventDefault();
+    
+    const clipboardData = e.clipboardData;
+    const html = clipboardData.getData('text/html');
+    const plainText = clipboardData.getData('text/plain');
+    
+    const currentBlock = blocks[blockIndex];
+    const baseIndent = currentBlock.indentLevel;
+    
+    const newBlocks: NoteBlock[] = [];
+    
+    if (html && html.trim()) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      
+      const processNode = (node: Node, indentLevel: number) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent?.trim();
+          if (text) {
+            newBlocks.push({
+              id: generateBlockId(),
+              type: "paragraph",
+              content: text,
+              indentLevel: Math.min(5, baseIndent + indentLevel),
+              isFlagged: false,
+              isCollapsed: false,
+            });
+          }
+          return;
+        }
+        
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        
+        const element = node as Element;
+        const tagName = element.tagName.toLowerCase();
+        
+        if (tagName === 'h1') {
+          const text = element.textContent?.trim();
+          if (text) {
+            newBlocks.push({
+              id: generateBlockId(),
+              type: "h1",
+              content: text,
+              indentLevel: Math.min(5, baseIndent + indentLevel),
+              isFlagged: false,
+              isCollapsed: false,
+            });
+          }
+        } else if (tagName === 'h2') {
+          const text = element.textContent?.trim();
+          if (text) {
+            newBlocks.push({
+              id: generateBlockId(),
+              type: "h2",
+              content: text,
+              indentLevel: Math.min(5, baseIndent + indentLevel),
+              isFlagged: false,
+              isCollapsed: false,
+            });
+          }
+        } else if (tagName === 'h3' || tagName === 'h4' || tagName === 'h5' || tagName === 'h6') {
+          const text = element.textContent?.trim();
+          if (text) {
+            newBlocks.push({
+              id: generateBlockId(),
+              type: "h3",
+              content: text,
+              indentLevel: Math.min(5, baseIndent + indentLevel),
+              isFlagged: false,
+              isCollapsed: false,
+            });
+          }
+        } else if (tagName === 'ul') {
+          element.childNodes.forEach(child => {
+            if ((child as Element).tagName?.toLowerCase() === 'li') {
+              const liElement = child as Element;
+              const nestedList = liElement.querySelector('ul, ol');
+              let textContent = '';
+              
+              liElement.childNodes.forEach(liChild => {
+                if (liChild.nodeType === Node.TEXT_NODE) {
+                  textContent += liChild.textContent || '';
+                } else if ((liChild as Element).tagName?.toLowerCase() !== 'ul' && 
+                           (liChild as Element).tagName?.toLowerCase() !== 'ol') {
+                  textContent += (liChild as Element).textContent || '';
+                }
+              });
+              
+              textContent = textContent.trim();
+              if (textContent) {
+                newBlocks.push({
+                  id: generateBlockId(),
+                  type: "ul",
+                  content: textContent,
+                  indentLevel: Math.min(5, baseIndent + indentLevel),
+                  isFlagged: false,
+                  isCollapsed: false,
+                });
+              }
+              
+              if (nestedList) {
+                processNode(nestedList, indentLevel + 1);
+              }
+            }
+          });
+        } else if (tagName === 'ol') {
+          element.childNodes.forEach(child => {
+            if ((child as Element).tagName?.toLowerCase() === 'li') {
+              const liElement = child as Element;
+              const nestedList = liElement.querySelector('ul, ol');
+              let textContent = '';
+              
+              liElement.childNodes.forEach(liChild => {
+                if (liChild.nodeType === Node.TEXT_NODE) {
+                  textContent += liChild.textContent || '';
+                } else if ((liChild as Element).tagName?.toLowerCase() !== 'ul' && 
+                           (liChild as Element).tagName?.toLowerCase() !== 'ol') {
+                  textContent += (liChild as Element).textContent || '';
+                }
+              });
+              
+              textContent = textContent.trim();
+              if (textContent) {
+                newBlocks.push({
+                  id: generateBlockId(),
+                  type: "ol",
+                  content: textContent,
+                  indentLevel: Math.min(5, baseIndent + indentLevel),
+                  isFlagged: false,
+                  isCollapsed: false,
+                });
+              }
+              
+              if (nestedList) {
+                processNode(nestedList, indentLevel + 1);
+              }
+            }
+          });
+        } else if (tagName === 'li') {
+          const text = element.textContent?.trim();
+          if (text) {
+            newBlocks.push({
+              id: generateBlockId(),
+              type: "ul",
+              content: text,
+              indentLevel: Math.min(5, baseIndent + indentLevel),
+              isFlagged: false,
+              isCollapsed: false,
+            });
+          }
+        } else if (tagName === 'p' || tagName === 'div') {
+          const text = element.textContent?.trim();
+          if (text) {
+            newBlocks.push({
+              id: generateBlockId(),
+              type: "paragraph",
+              content: text,
+              indentLevel: Math.min(5, baseIndent + indentLevel),
+              isFlagged: false,
+              isCollapsed: false,
+            });
+          }
+        } else if (tagName === 'br') {
+          return;
+        } else {
+          element.childNodes.forEach(child => processNode(child, indentLevel));
+        }
+      };
+      
+      doc.body.childNodes.forEach(node => processNode(node, 0));
+    }
+    
+    if (newBlocks.length === 0 && plainText) {
+      const lines = plainText.split(/\r?\n/).filter(line => line.trim());
+      lines.forEach(line => {
+        newBlocks.push({
+          id: generateBlockId(),
+          type: "paragraph",
+          content: line.trim(),
+          indentLevel: baseIndent,
+          isFlagged: false,
+          isCollapsed: false,
+        });
+      });
+    }
+    
+    if (newBlocks.length === 0) return;
+    
+    if (newBlocks.length === 1 && currentBlock.content === "") {
+      setBlocks(prev => prev.map((b, i) => 
+        i === blockIndex ? { ...b, ...newBlocks[0], id: b.id } : b
+      ));
+    } else {
+      setBlocks(prev => {
+        const updatedBlocks = [...prev];
+        updatedBlocks.splice(blockIndex + 1, 0, ...newBlocks);
+        return updatedBlocks;
+      });
+      
+      setTimeout(() => {
+        const lastNewBlock = newBlocks[newBlocks.length - 1];
+        const ref = blockRefs.current.get(lastNewBlock.id);
+        if (ref) {
+          ref.focus();
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(ref);
+          range.collapse(false);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+      }, 0);
+    }
+    
+    debouncedSave();
+  };
+
   const toggleCollapse = (blockId: string) => {
     setBlocks(prev => prev.map(block => 
       block.id === blockId ? { ...block, isCollapsed: !block.isCollapsed } : block
@@ -853,6 +1071,7 @@ export default function NotesPage() {
                           saveNote();
                         }}
                         onKeyDown={(e) => handleBlockKeyDown(e, block.id, index)}
+                        onPaste={(e) => handlePaste(e, block.id, index)}
                         data-testid={`editor-block-${block.id}`}
                       />
                     </div>
