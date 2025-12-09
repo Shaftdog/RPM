@@ -1971,16 +1971,24 @@ export default function DailyWorksheet() {
                             <>
                               {visibleTasks.map((task, taskIndex) => {
                                 // Find the correct entry for this specific task
-                                const taskEntry = schedule.find((e: any) => 
+                                // For regular tasks, match by actualTaskId/plannedTaskId
+                                // For recurring/multiple tasks, use the entry for this timeBlock/quartile
+                                let taskEntry = schedule.find((e: any) => 
                                   (e.actualTaskId === task.id || e.plannedTaskId === task.id) &&
                                   e.timeBlock === block.name &&
                                   e.quartile === quartile
                                 );
+                                
+                                // Fallback for recurring/multiple tasks - they share the same entry
+                                if (!taskEntry && (task.id.startsWith('recurring-') || task.id.startsWith('multiple-'))) {
+                                  taskEntry = entry;
+                                }
+                                
                                 return (
                                   <DraggableTask key={task.id} task={{ 
                                     id: task.id, 
                                     name: task.name,
-                                    entryId: taskEntry?.id,
+                                    entryId: taskEntry?.id || entry?.id,
                                     timeBlock: block.name,
                                     quartile
                                   }} taskTree={taskTree}>
