@@ -52,7 +52,7 @@ function DraggableTask({ task, children, taskTree }: { task: any; children: Reac
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
-  }));
+  }), [task.entryId, task.id, task.name, task.timeBlock, task.quartile, hasChildren, taskTree]);
 
   // Different styles for non-draggable parent tasks and loading states
   const getTaskStyles = () => {
@@ -157,7 +157,7 @@ function QuartileDropZone({
       isOver: monitor.isOver(),
       canDrop: monitor.canDrop(),
     }),
-  }));
+  }), [isOccupied, onDrop, timeBlock, quartile, taskTree]);
 
   // Determine visual state
   const getDropZoneStyles = () => {
@@ -241,7 +241,7 @@ function BacklogDropZone({
       isOver: monitor.isOver(),
       canDrop: monitor.canDrop(),
     }),
-  }));
+  }), [onDrop, taskTree]);
 
   // Enhanced visual feedback for backlog
   const getBacklogStyles = () => {
