@@ -1735,10 +1735,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Sync Recurring Tasks to Daily Schedule (Rebuild Mode)
   app.post('/api/recurring/sync-to-daily', isAuthenticated, async (req: any, res) => {
     try {
+      // Helper function to format date as YYYY-MM-DD in America/New_York timezone
+      // Using 'en-CA' locale which returns dates in YYYY-MM-DD format
+      const formatDateYMD = (date: Date): string => {
+        return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      };
+      
+      // Helper function to parse a YYYY-MM-DD string into a Date that represents noon on that day
+      // This avoids timezone day-shift issues (midnight UTC becomes previous day in NY)
+      const parseNYDate = (dateStr: string): Date => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        // Create noon UTC on this date - this ensures the date stays the same day
+        // when converted to NY timezone (noon UTC = 7 AM or 8 AM NY, same calendar day)
+        return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+      };
+      
       // Get current date in NY timezone for default
-      const nyTimeStr = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-      const nyDate = new Date(nyTimeStr);
-      const nyDateStr = nyDate.toISOString().slice(0, 10);
+      const now = new Date();
+      const nyDateStr = formatDateYMD(now);
       
       const syncSchema = z.object({
         targetDate: z.string().optional().default(nyDateStr),
@@ -1746,7 +1760,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const { targetDate, dryRun } = syncSchema.parse(req.body);
-      const baseline = new Date(targetDate);
+      const baseline = parseNYDate(targetDate);
       
       // Get all active recurring tasks for the user
       const recurringTasks = await storage.getRecurringTasks(req.user.id);
@@ -1773,7 +1787,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Helper function to calculate next occurrence date (includes TODAY if it matches)
       const getNextOccurrenceDate = (baseline: Date, targetDayName: string): Date => {
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        const baselineDay = baseline.getDay(); // 0=Sunday, 1=Monday, etc.
+        // Use UTC day since baseline is created at noon UTC
+        const baselineDay = baseline.getUTCDay(); // 0=Sunday, 1=Monday, etc.
         const targetDay = dayNames.indexOf(targetDayName.toLowerCase());
         
         if (targetDay === -1) {
@@ -1787,9 +1802,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         // If daysUntil === 0, it's today - include it!
         
-        const nextDate = new Date(baseline);
-        nextDate.setDate(baseline.getDate() + daysUntil);
-        nextDate.setHours(0, 0, 0, 0); // Start of day
+        // Create new date at noon UTC on the target day
+        const nextDate = new Date(Date.UTC(
+          baseline.getUTCFullYear(),
+          baseline.getUTCMonth(),
+          baseline.getUTCDate() + daysUntil,
+          12, 0, 0
+        ));
         return nextDate;
       };
 
@@ -1798,8 +1817,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const now = getNYTime();
         
         // Only check if it's today (compare dates in NY timezone)
-        const dateStr = date.toISOString().slice(0, 10);
-        const nowStr = now.toISOString().slice(0, 10);
+        const dateStr = formatDateYMD(date);
+        const nowStr = formatDateYMD(now);
         
         if (dateStr !== nowStr) {
           return false; // Future dates haven't passed
@@ -1879,11 +1898,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const dayName of recurringTask.daysOfWeek) {
           try {
             const targetDate = getNextOccurrenceDate(baseline, dayName);
-            const dateStr = targetDate.toISOString().slice(0, 10);
+            const dateStr = formatDateYMD(targetDate);
 
             // Skip if the entire date is in the past (using NY timezone)
             const now = getNYTime();
-            const todayStr = now.toISOString().slice(0, 10);
+            const todayStr = formatDateYMD(now);
             if (dateStr < todayStr) {
               console.log(`[SYNC DEBUG] Skipping ${recurringTask.taskName} - date ${dateStr} is in the past (today is ${todayStr} in NY)`);
               skipped++;
@@ -1902,7 +1921,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const existingTask = existingTasks.find(task => 
               task.name === recurringTask.taskName && 
               task.xDate && 
-              new Date(task.xDate).toISOString().slice(0, 10) === dateStr
+              formatDateYMD(new Date(task.xDate)) === dateStr
             );
 
             let taskId: string;
