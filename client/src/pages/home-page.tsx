@@ -7,8 +7,9 @@ import DailyWorksheet from "@/components/daily-worksheet";
 import RecurringTasksPage from "@/pages/recurring-tasks-page";
 import AnalyticsDashboard from "@/pages/analytics-dashboard";
 import NotesPage from "@/pages/notes-page";
+import Dashboard from "@/pages/dashboard";
 
-type TabType = "capture" | "planning" | "daily" | "recurring" | "analytics" | "notes";
+type TabType = "dashboard" | "capture" | "planning" | "daily" | "recurring" | "analytics" | "notes";
 
 export default function HomePage() {
   const [location] = useLocation();
@@ -16,10 +17,10 @@ export default function HomePage() {
   // Determine initial tab from URL path
   const getInitialTab = (): TabType => {
     const path = location.replace("/", "");
-    if (path === "capture" || path === "planning" || path === "daily" || path === "recurring" || path === "analytics" || path === "notes") {
+    if (path === "dashboard" || path === "capture" || path === "planning" || path === "daily" || path === "recurring" || path === "analytics" || path === "notes") {
       return path as TabType;
     }
-    return "capture"; // default
+    return "dashboard"; // default to dashboard
   };
   
   const [activeTab, setActiveTab] = useState<TabType>(getInitialTab());
@@ -34,7 +35,8 @@ export default function HomePage() {
     <div className="min-h-screen bg-background">
       <HeaderNavigation activeTab={activeTab} onTabChange={setActiveTab} />
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={`mx-auto px-4 sm:px-6 lg:px-8 py-8 ${activeTab === "dashboard" ? "max-w-full" : "max-w-7xl"}`}>
+        {activeTab === "dashboard" && <Dashboard />}
         {activeTab === "capture" && <TaskCaptureInterface />}
         {activeTab === "planning" && <StrategicPlanningMatrix />}
         {activeTab === "daily" && <DailyWorksheet />}

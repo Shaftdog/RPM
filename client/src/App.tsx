@@ -13,6 +13,7 @@ function Router() {
   return (
     <Switch>
       <ProtectedRoute path="/" component={HomePage} />
+      <ProtectedRoute path="/dashboard" component={HomePage} />
       <ProtectedRoute path="/capture" component={HomePage} />
       <ProtectedRoute path="/planning" component={HomePage} />
       <ProtectedRoute path="/daily" component={HomePage} />

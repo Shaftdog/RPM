@@ -34,8 +34,8 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 interface HeaderNavigationProps {
-  activeTab: "capture" | "planning" | "daily" | "recurring" | "analytics" | "notes";
-  onTabChange: (tab: "capture" | "planning" | "daily" | "recurring" | "analytics" | "notes") => void;
+  activeTab: "dashboard" | "capture" | "planning" | "daily" | "recurring" | "analytics" | "notes";
+  onTabChange: (tab: "dashboard" | "capture" | "planning" | "daily" | "recurring" | "analytics" | "notes") => void;
 }
 
 export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavigationProps) {
@@ -182,6 +182,14 @@ export default function HeaderNavigation({ activeTab, onTabChange }: HeaderNavig
           </div>
         </div>
         <nav className="flex flex-wrap gap-2 pb-3">
+          <Button
+            variant={activeTab === "dashboard" ? "default" : "secondary"}
+            onClick={() => onTabChange("dashboard")}
+            data-testid="tab-dashboard"
+            size="sm"
+          >
+            Dashboard
+          </Button>
           <Button
             variant={activeTab === "capture" ? "default" : "secondary"}
             onClick={() => onTabChange("capture")}
